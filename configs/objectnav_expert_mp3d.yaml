@@ -1,3 +1,5 @@
+# Created by Yunhai Feng at 2022/5/1
+
 ENVIRONMENT:
   MAX_EPISODE_STEPS: 500
 
@@ -43,8 +45,9 @@ TASK:
   SUCCESS:
     SUCCESS_DISTANCE: 0.1
 
-DATASET:
-  TYPE: ObjectNav-v1
+DATASET: # !!!!
+  TYPE: ObjectNav-demo
   SPLIT: train
-  DATA_PATH: "habitat-challenge-data/data/datasets/objectnav_hm3d_v1/{split}/{split}.json.gz"
-  SCENES_DIR: "habitat-challenge-data/data/scene_datasets"
+  DATA_PATH: "habitat-challenge-data/data/datasets/objectnav/objectnav_mp3d_70k/{split}/{split}.json.gz"
+  SCENES_DIR: "habitat-challenge-data/data/scene_datasets/"
+  MAX_EPISODE_STEPS: 500
