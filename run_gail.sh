@@ -11,8 +11,10 @@ set -x
 #    --run-type train \
 #    TASK_CONFIG.DATASET.SPLIT 'train'
 
+exp_config_path=$1 # configs/gail_objectnav.yaml
+
 python3 -u -m run \
-    --exp-config configs/gail_objectnav.yaml \
+    --exp-config $exp_config_path \
     --run-type train \
     TASK_CONFIG.DATASET.SPLIT 'train'
     #    TASK_CONFIG.DATASET.SPLIT 'val' # small dataset for debug

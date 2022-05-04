@@ -102,6 +102,7 @@ class GAILTrainer(BaseRLTrainer):
             self._obs_space[ObjectGoalSensor.cls_uuid].high[0] = 28 #TODO: add param to config
 
             print("=" * 40, self._obs_space) # TODO: check the output
+            print(self._obs_space[ObjectGoalSensor.cls_uuid].high)
             print(self._obs_space[ObjectGoalSensor.cls_uuid].high[0])
 
         return self._obs_space
