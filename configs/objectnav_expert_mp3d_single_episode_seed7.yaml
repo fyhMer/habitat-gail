@@ -45,10 +45,9 @@ TASK:
   SUCCESS:
     SUCCESS_DISTANCE: 0.1
 
-DATASET: # !!!!
+DATASET:
   TYPE: ObjectNav-demo
-  SPLIT: train_1x1_seed7 ###
-#  DATA_PATH: "/home/fyh/Data/habitat-challenge-data/data/datasets/objectnav/objectnav_mp3d_70k/{split}/{split}.json.gz"
+  SPLIT: train_1x1_seed7
   DATA_PATH: "habitat-challenge-data/data/datasets/objectnav/objectnav_mp3d_70k/{split}/{split}.json.gz"
   SCENES_DIR: "habitat-challenge-data/data/scene_datasets/"
   MAX_EPISODE_STEPS: 500

@@ -3,7 +3,7 @@
 export GLOG_minloglevel=2
 export MAGNUM_LOG=quiet
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 set -x
 #python -u -m habitat_baselines.run \
@@ -24,3 +24,4 @@ python3 -u -m run \
 
 # bash run_gail.sh configs/gail_objectnav_v2.yaml
 # bash run_gail.sh configs/gail_objectnav_single_episode_v0_seed1.yaml
+# bash run_gail.sh configs/gail_objectnav_single_episode_v1_seed7.yaml
