@@ -335,4 +335,5 @@ def construct_gail_envs(
         env_fn_args=tuple(zip(configs + demo_configs, env_classes)),
         workers_ignore_signals=workers_ignore_signals,
     )
+    print("finish construct_gail_envs!")
     return envs

@@ -765,13 +765,33 @@ class GAILTrainer(BaseRLTrainer):
         metrics = {
             k: v / deltas["count"]
             for k, v in deltas.items()
-            if k not in {"reward", "count"}
+            if k not in {"task_reward", "gail_reward", "total_reward", "count"}
         }
 
         for k, v in metrics.items():
             writer.add_scalar(f"metrics/{k}", v, self.num_steps_done)
         for k, v in losses.items():
             writer.add_scalar(f"losses/{k}", v, self.num_steps_done)
+
+        # also log demo metrics
+        demo_deltas = {
+            k: (
+                (v[-1][self._demo_env_slice] - v[0][self._demo_env_slice]).sum().item()
+                if len(v) > 1
+                else v[0][self._demo_env_slice].sum().item()
+            )
+            for k, v in self.window_episode_stats.items()
+        }
+        demo_deltas["count"] = max(demo_deltas["count"], 1.0)
+        demo_metrics = {
+            k: v / demo_deltas["count"]
+            for k, v in demo_deltas.items()
+            if k not in {"task_reward", "gail_reward", "total_reward", "count"}
+        }
+        for k, v in demo_metrics.items():
+            writer.add_scalar(f"demo_metrics/{k}", v, self.num_steps_done)
+        # end of demo metrics logging
+
 
         # log stats
         if self.num_updates_done % self.config.LOG_INTERVAL == 0:

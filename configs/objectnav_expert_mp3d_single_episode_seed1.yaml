@@ -1,4 +1,4 @@
-# Created by Yunhai Feng at 2022/5/1
+# Created by mer at 2022/5/5
 
 ENVIRONMENT:
   MAX_EPISODE_STEPS: 500
@@ -47,7 +47,7 @@ TASK:
 
 DATASET: # !!!!
   TYPE: ObjectNav-demo
-  SPLIT: train
+  SPLIT: train_1x1_seed1
 #  DATA_PATH: "/home/fyh/Data/habitat-challenge-data/data/datasets/objectnav/objectnav_mp3d_70k/{split}/{split}.json.gz"
   DATA_PATH: "habitat-challenge-data/data/datasets/objectnav/objectnav_mp3d_70k/{split}/{split}.json.gz"
   SCENES_DIR: "habitat-challenge-data/data/scene_datasets/"
