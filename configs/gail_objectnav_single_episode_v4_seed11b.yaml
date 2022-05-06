@@ -1,24 +1,25 @@
-# Created by Yunhai Feng at 2022/5/5
+# Created by Yunhai Feng at 2022/5/6
 
-# GAIL single episode v1-2
+# GAIL single episode v4
 # pure gail imitation, no task reward (gail_reward_coef = 1.0)
-# New: GAIL.DISCRIMINATOR.lr is decreased to 2.5e-5
-BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11.yaml" ###
-DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11.yaml" ###
+# New: In this version, gail reward is computed by *just-updated* discriminator weights
+# the params remain the same as v1-2
+BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11b.yaml" ###
+DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11b.yaml" ###
 CMD_TRAILING_OPTS: ["TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS", "50000"]
 TRAINER_NAME: "gail"
 ENV_NAME: "NavGAILEnv"
 SIMULATOR_GPU_ID: 0
 TORCH_GPU_ID: 0
 #VIDEO_OPTION: ["disk", "tensorboard"]
-VIDEO_OPTION: ["disk"]
-TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_single_episode_v1_2/seed11" ###
-VIDEO_DIR: "/home/fyh/Data/video_dir/gail_single_episode_v1_2/seed11" ###
+VIDEO_OPTION: []
+TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_single_episode_v4/seed11b" ###
+VIDEO_DIR: "/home/fyh/Data/video_dir/gail_single_episode_v4/seed11b" ###
 TEST_EPISODE_COUNT: -1
-EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v1_2/seed11" ###
+EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v4/seed11b" ###
 NUM_ENVIRONMENTS: 2
 SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR"]
-CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v1_2/seed11" ###
+CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v4/seed11b" ###
 NUM_UPDATES: 100000
 LOG_INTERVAL: 10
 NUM_CHECKPOINTS: 100
@@ -27,7 +28,7 @@ NUM_CHECKPOINTS: 100
 FORCE_TORCH_SINGLE_THREADED: True
 
 EVAL:
-  SPLIT: "train_1x1_seed11"
+  SPLIT: "val"
 
 RL:
   SUCCESS_REWARD: 2.5
@@ -93,6 +94,6 @@ GAIL:
     discriminator_epoch: 8
     num_mini_batch: 1
     lr: 2.5e-5
-    eps: !!float 1e-5
+    eps: 1e-5
     use_linear_lr_decay: False
     max_grad_norm: 0.2

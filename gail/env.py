@@ -206,7 +206,9 @@ class NavGAILEnv(habitat.RLEnv):
         return done
 
     def get_info(self, observations):
-        return self.habitat_env.get_metrics()
+        info = self.habitat_env.get_metrics()
+        info["episode_len"] = self.habitat_env._elapsed_steps
+        return info
 
     @staticmethod
     def _get_action_by_name(action):

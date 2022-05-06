@@ -52,7 +52,7 @@ from habitat_baselines.utils.common import (
     batch_obs,
     generate_video,
 )
-
+from habitat_baselines.utils.env_utils import construct_envs
 from gail.env import construct_gail_envs
 from habitat.tasks.nav.object_nav_task import ObjectGoalSensor
 from gail.discriminator import Discriminator, DiscriminatorNet
@@ -199,12 +199,15 @@ class GAILTrainer(BaseRLTrainer):
         self.discriminator_net = DiscriminatorNet(
             observation_space=self._obs_space,
             action_space=self.policy_action_space,
-            hidden_size=int(self.config.GAIL.DISCRIMINATOR.hidden_size),
+            hidden_size=self.config.GAIL.DISCRIMINATOR.hidden_size,
             backbone=self.config.GAIL.DISCRIMINATOR.backbone,
-            resnet_baseplanes=int(self.config.GAIL.DISCRIMINATOR.resnet_baseplanes),
+            resnet_baseplanes=self.config.GAIL.DISCRIMINATOR.resnet_baseplanes,
             normalize_visual_inputs=self.config.GAIL.DISCRIMINATOR.normalize_visual_inputs,
             force_blind_policy=False,
-            discrete_actions=True
+            discrete_actions=True,
+            # use_rnn=self.config.GAIL.DISCRIMINATOR.use_rnn,
+            # num_recurrent_layers=self.config.GAIL.DISCRIMINATOR.num_recurrent_layers,
+            # rnn_type=self.config.GAIL.DISCRIMINATOR.rnn_type
         )
         self.discriminator_net.to(self.device)
         self.discriminator = Discriminator(
@@ -219,6 +222,15 @@ class GAILTrainer(BaseRLTrainer):
             config = self.config
 
         self.envs = construct_gail_envs(
+            config,
+            get_env_class(config.ENV_NAME),
+            workers_ignore_signals=is_slurm_batch_job(),
+        )
+
+    def _init_eval_envs(self, config=None):
+        if config is None:
+            config = self.config
+        self.envs = construct_envs(
             config,
             get_env_class(config.ENV_NAME),
             workers_ignore_signals=is_slurm_batch_job(),
@@ -653,6 +665,30 @@ class GAILTrainer(BaseRLTrainer):
         self._compute_actions_and_step_envs()
         return self._collect_environment_result()
 
+    def _compute_gail_rewards_for_rollouts(self):
+        device = self.rollouts.buffers["gail_rewards"].device  # device: cpu
+        with torch.no_grad():
+            batch = self.rollouts.buffers[
+                0: self.rollouts.current_rollout_step_idxs[self._agent_buffer_idx],
+                self._agent_env_slice,
+            ]
+            n_steps, n_envs, _ = batch["masks"].shape
+            # print("n_steps, n_envs:",n_steps, n_envs)
+            batch = batch.map(lambda v: v.flatten(0, 1))
+            gail_rewards = self.discriminator.get_reward(
+                observations=batch["observations"],
+                prev_actions=batch["prev_actions"],
+                masks=batch["masks"],
+                curr_actions=batch["actions"]
+            ).view(n_steps, n_envs, -1).to(device)
+
+            self.rollouts.buffers["gail_rewards"][0: n_steps, self._agent_env_slice] = gail_rewards
+
+            total_rewards = self.config.GAIL.gail_reward_coef * gail_rewards \
+                          + (1 - self.config.GAIL.gail_reward_coef) \
+                          * self.rollouts.buffers["task_rewards"][0: n_steps, self._agent_env_slice]
+            self.rollouts.buffers["total_rewards"][0: n_steps, self._agent_env_slice] = total_rewards
+
     def _update_discriminator(self):
         return self.discriminator.update(self.rollouts)
 
@@ -660,6 +696,10 @@ class GAILTrainer(BaseRLTrainer):
     def _update_agent(self):
         ppo_cfg = self.config.RL.PPO
         t_update_model = time.time()
+
+        # First compute gail rewards given by the discriminator
+        self._compute_gail_rewards_for_rollouts()
+
         with torch.no_grad():
             step_batch = self.rollouts.buffers[
                 self.rollouts.current_rollout_step_idx
@@ -976,12 +1016,11 @@ class GAILTrainer(BaseRLTrainer):
                 if self._is_distributed:
                     self.num_rollouts_done_store.add("num_done", 1)
 
+                # update discriminator
                 discrim_loss_agent, discrim_loss_demo, discrim_total_loss = self._update_discriminator()
-                (
-                    value_loss,
-                    action_loss,
-                    dist_entropy,
-                ) = self._update_agent()
+
+                # update agent
+                value_loss, action_loss, dist_entropy = self._update_agent()
 
                 if ppo_cfg.use_linear_lr_decay:
                     agent_lr_scheduler.step()  # type: ignore
@@ -1045,11 +1084,17 @@ class GAILTrainer(BaseRLTrainer):
         else:
             config = self.config.clone()
 
-        ppo_cfg = config.RL.PPO
-
         config.defrost()
+        config.GAIL.is_demonstration_env = False
         config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
+        config.NUM_ENVIRONMENTS = 1
         config.freeze()
+
+        self.config.defrost()
+        self.config.NUM_ENVIRONMENTS = 1
+        self.config.freeze()
+
+        ppo_cfg = config.RL.PPO
 
         if len(self.config.VIDEO_OPTION) > 0:
             config.defrost()
@@ -1060,7 +1105,7 @@ class GAILTrainer(BaseRLTrainer):
         if config.VERBOSE:
             logger.info(f"env config: {config}")
 
-        self._init_envs(config)
+        self._init_eval_envs(config)
 
         if self.using_velocity_ctrl:
             self.policy_action_space = self.envs.action_spaces[0][
@@ -1087,6 +1132,7 @@ class GAILTrainer(BaseRLTrainer):
         current_episode_reward = torch.zeros(
             self.envs.num_envs, 1, device="cpu"
         )
+        print("self.config.NUM_ENVIRONMENTS", self.config.NUM_ENVIRONMENTS)
 
         test_recurrent_hidden_states = torch.zeros(
             self.config.NUM_ENVIRONMENTS,
@@ -1201,7 +1247,7 @@ class GAILTrainer(BaseRLTrainer):
                 if not not_done_masks[i].item():
                     pbar.update()
                     episode_stats = {
-                        "reward": current_episode_reward[i].item()
+                        "task_reward": current_episode_reward[i].item()
                     }
                     episode_stats.update(
                         self._extract_scalars_from_info(infos[i])
@@ -1272,10 +1318,10 @@ class GAILTrainer(BaseRLTrainer):
             step_id = ckpt_dict["extra_state"]["step"]
 
         writer.add_scalar(
-            "eval_reward/average_reward", aggregated_stats["reward"], step_id
+            "eval_reward/average_task_reward", aggregated_stats["task_reward"], step_id
         )
 
-        metrics = {k: v for k, v in aggregated_stats.items() if k != "reward"}
+        metrics = {k: v for k, v in aggregated_stats.items() if k != "task_reward"}
         for k, v in metrics.items():
             writer.add_scalar(f"eval_metrics/{k}", v, step_id)
 

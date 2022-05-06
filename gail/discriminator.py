@@ -3,7 +3,7 @@
 # Created by Yunhai Feng at 4:23 pm, 2022/4/30.
 
 
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Sequence, Union
 
 import numpy as np
 from gym import spaces
@@ -27,7 +27,9 @@ from habitat.tasks.nav.nav import (
 from habitat.tasks.nav.object_nav_task import ObjectGoalSensor
 from habitat_baselines.rl.ddppo.policy import resnet
 from habitat_baselines.rl.ddppo.policy.resnet_policy import ResNetEncoder
-
+from habitat_baselines.rl.models.rnn_state_encoder import (
+    build_rnn_state_encoder,
+)
 from gail.common.rollout_storage import RolloutStorage
 
 
@@ -50,6 +52,9 @@ class DiscriminatorNet(nn.Module):
         normalize_visual_inputs: bool,
         force_blind_policy: bool = False,
         discrete_actions: bool = True,
+        use_rnn: bool = False,
+        num_recurrent_layers: int = 1,
+        rnn_type: str = "GRU",
     ):
         super().__init__()
         self.prev_action_embedding: nn.Module
@@ -174,6 +179,16 @@ class DiscriminatorNet(nn.Module):
 
             total_embedding_size += hidden_size
 
+        self._use_rnn = use_rnn
+        if use_rnn:
+            self.state_encoder = build_rnn_state_encoder(
+                total_embedding_size,
+                self._hidden_size,
+                rnn_type=rnn_type,
+                num_layers=num_recurrent_layers,
+            )
+            total_embedding_size = self._hidden_size
+
         self.fc_layers = nn.Sequential(
             nn.Linear(total_embedding_size, 256),
             nn.ReLU(inplace=True),
@@ -199,8 +214,9 @@ class DiscriminatorNet(nn.Module):
         observations: Dict[str, torch.Tensor],
         prev_actions,
         masks,
-        curr_actions
-    ) -> torch.Tensor:
+        curr_actions,
+        rnn_hidden_states=None
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         x = []
         if not self.is_blind:
             visual_feats = observations.get(
@@ -315,9 +331,19 @@ class DiscriminatorNet(nn.Module):
 
         feature_embedding = torch.cat(x, dim=1)
         # print("feature size", feature_embedding.shape)
-        out = self.fc_layers(feature_embedding)
 
-        return out
+        if self._use_rnn:
+            assert rnn_hidden_states is not None
+            feature_embedding, rnn_hidden_states = self.state_encoder(
+                feature_embedding,
+                rnn_hidden_states,
+                masks
+            )
+            out = self.fc_layers(feature_embedding)
+            return out, rnn_hidden_states
+        else:
+            out = self.fc_layers(feature_embedding)
+            return out
 
 
 class Discriminator(nn.Module):

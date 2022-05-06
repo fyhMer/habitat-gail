@@ -3,7 +3,7 @@
 export GLOG_minloglevel=2
 export MAGNUM_LOG=quiet
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 set -x
 #python -u -m habitat_baselines.run \
@@ -15,7 +15,7 @@ exp_config_path=$1 # configs/gail_objectnav.yaml
 
 python3 -u -m run \
     --exp-config $exp_config_path \
-    --run-type train
+    --run-type eval
 #    TASK_CONFIG.DATASET.SPLIT 'train_1x1_seed1'
     #    TASK_CONFIG.DATASET.SPLIT 'val' # small dataset for debug
 
