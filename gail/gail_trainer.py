@@ -649,7 +649,7 @@ class GAILTrainer(BaseRLTrainer):
             next_observations=batch,
             task_rewards=task_rewards,
             gail_rewards=gail_rewards,
-            total_rewards=total_rewards, # TODO: compute total_rewards
+            total_rewards=total_rewards,
             next_masks=not_done_masks,
             buffer_index=buffer_index,
         )
