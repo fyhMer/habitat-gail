@@ -104,6 +104,7 @@ class NavGAILEnv(habitat.RLEnv):
 
         self._is_demonstration_env = config.GAIL.is_demonstration_env
         self._demonstration_timestep = 1
+        self._sparse_reward_only = config.GAIL.sparse_reward_only
 
         self._previous_measure = None
         self._previous_action = None
@@ -168,6 +169,10 @@ class NavGAILEnv(habitat.RLEnv):
     #     raise NotImplementedError
 
     def get_reward(self, observations):
+        success_reward = self._rl_config.SUCCESS_REWARD if self._episode_success() else 0.0
+        if self._sparse_reward_only:
+            return success_reward
+
         reward = self._rl_config.SLACK_REWARD
 
         current_measure = self._env.get_metrics()[self._reward_measure_name]
@@ -175,8 +180,9 @@ class NavGAILEnv(habitat.RLEnv):
         reward += self._previous_measure - current_measure
         self._previous_measure = current_measure
 
-        if self._episode_success():
-            reward += self._rl_config.SUCCESS_REWARD
+        # if self._episode_success():
+        #     reward += self._rl_config.SUCCESS_REWARD
+        reward += success_reward
 
         return reward
 

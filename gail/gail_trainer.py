@@ -589,7 +589,7 @@ class GAILTrainer(BaseRLTrainer):
                 ).to(device)
 
                 total_rewards = self.config.GAIL.gail_reward_coef * gail_rewards \
-                        + (1 - self.config.GAIL.gail_reward_coef) * task_rewards
+                              + self.config.GAIL.task_reward_coef * task_rewards
         else:
             gail_rewards = None
             total_rewards = None
@@ -685,7 +685,7 @@ class GAILTrainer(BaseRLTrainer):
             self.rollouts.buffers["gail_rewards"][0: n_steps, self._agent_env_slice] = gail_rewards
 
             total_rewards = self.config.GAIL.gail_reward_coef * gail_rewards \
-                          + (1 - self.config.GAIL.gail_reward_coef) \
+                          + self.config.GAIL.task_reward_coef \
                           * self.rollouts.buffers["task_rewards"][0: n_steps, self._agent_env_slice]
             self.rollouts.buffers["total_rewards"][0: n_steps, self._agent_env_slice] = total_rewards
 
