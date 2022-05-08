@@ -1,15 +1,14 @@
 # Created by Yunhai Feng at 2022/5/7
 
-# GAIL single episode v5-2-1
+# GAIL single episode v5-2
 # pure gail imitation, no task reward (gail_reward_coef = 1.0)
 # gail reward is computed by *just-updated* discriminator weights
 # v5: Two new params `task_reward_coef` and `sparse_reward_only` added.
 #      In this version, we consider gail reward + success reward, but no slack reward,
 #      achieved by setting task_reward_coef > 0 and sparse_reward_only = True.
 # v5-2: task_reward_coef = 2.0
-# v5-2-1: RL.PPO.gamma = 0.9
-BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11b.yaml" ###
-DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11b.yaml" ###
+BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_1x10_seed3.yaml" ###
+DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_1x10_seed3.yaml" ###
 CMD_TRAILING_OPTS: ["TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS", "50000"]
 TRAINER_NAME: "gail"
 ENV_NAME: "NavGAILEnv"
@@ -17,13 +16,13 @@ SIMULATOR_GPU_ID: 0
 TORCH_GPU_ID: 0
 #VIDEO_OPTION: ["disk", "tensorboard"]
 VIDEO_OPTION: ["disk"]
-TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_single_episode_v5_2_1/seed11b" ###
-VIDEO_DIR: "/home/fyh/Data/video_dir/gail_single_episode_v5_2_1/seed11b" ###
+TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_1x10_v5_2/seed3" ###
+VIDEO_DIR: "/home/fyh/Data/video_dir/gail_1x10_v5_2/seed3" ###
 TEST_EPISODE_COUNT: -1
-EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v5_2_1/seed11b" ###
+EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_1x10_v5_2/seed3" ###
 NUM_ENVIRONMENTS: 2
 SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR"]
-CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v5_2_1/seed11b" ###
+CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_1x10_v5_2/seed3" ###
 NUM_UPDATES: 100000
 LOG_INTERVAL: 10
 NUM_CHECKPOINTS: 100
@@ -32,7 +31,7 @@ NUM_CHECKPOINTS: 100
 FORCE_TORCH_SINGLE_THREADED: True
 
 EVAL:
-  SPLIT: "train_1x1_seed11b"
+  SPLIT: "train_1x10_seed3"
 
 RL:
   SUCCESS_REWARD: 2.5
@@ -55,7 +54,7 @@ RL:
     max_grad_norm: 0.2
     num_steps: 64
     use_gae: True
-    gamma: 0.9 # 0.99
+    gamma: 0.99
     tau: 0.95
     use_linear_clip_decay: False
     use_linear_lr_decay: False
