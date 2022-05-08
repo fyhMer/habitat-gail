@@ -3,7 +3,7 @@
 export GLOG_minloglevel=2
 export MAGNUM_LOG=quiet
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 set -x
 #python -u -m habitat_baselines.run \

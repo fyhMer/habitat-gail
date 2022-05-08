@@ -374,7 +374,10 @@ class Discriminator(nn.Module):
     def get_reward(self, *args, **kwargs) -> torch.Tensor:
         # TODO: tune parameters
         if "discriminator_score" not in kwargs:
-            d = self.net.forward(*args, **kwargs)
+            if self.net._use_rnn:
+                d, _ = self.net.forward(*args, **kwargs)
+            else:
+                d = self.net.forward(*args, **kwargs)
         else:
             d = kwargs["discriminator_score"]
         reward = -torch.log(
@@ -393,20 +396,36 @@ class Discriminator(nn.Module):
             data_generator = rollouts.gail_data_generator(self.num_mini_batch)
 
             self.net.train()  # TODO: check this
-            for batch_agent, batch_demo in data_generator:
-                agent_score = self.net(
+            for batch_agent, batch_demo, agent_env_inds, demo_env_inds in data_generator:
+                agent_discrim_ret = self.net(
                     observations=batch_agent["observations"],
                     prev_actions=batch_agent["prev_actions"],
                     masks=batch_agent["masks"],
-                    curr_actions=batch_agent["actions"]
+                    curr_actions=batch_agent["actions"],
+                    rnn_hidden_states=batch_agent["discrim_start_hidden_states"]
                 )
+                if self.net._use_rnn:
+                    agent_score, agent_discrim_hidden_states = agent_discrim_ret
+                    if _e + 1 == self.discriminator_epoch:
+                        rollouts.insert_dscrim_start_hidden_states(agent_discrim_hidden_states, agent_env_inds)
+                else:
+                    agent_score = agent_discrim_ret
+
                 # TODO: check expert prev action
-                demo_score = self.net(
+                demo_discrim_ret = self.net(
                     observations=batch_demo["observations"],
                     prev_actions=batch_demo["prev_actions"],
                     masks=batch_demo["masks"],
-                    curr_actions=batch_demo["actions"]
+                    curr_actions=batch_demo["actions"],
+                    rnn_hidden_states=batch_demo["discrim_start_hidden_states"]
                 )
+                if self.net._use_rnn:
+                    demo_score, demo_discrim_hidden_states = demo_discrim_ret
+                    if _e + 1 == self.discriminator_epoch:
+                        rollouts.insert_dscrim_start_hidden_states(demo_discrim_hidden_states, demo_env_inds)
+                else:
+                    demo_score = demo_discrim_ret
+
                 loss_agent = -torch.log(
                     torch.clip(torch.ones_like(agent_score) - agent_score, min=1e-6)
                 ).mean()

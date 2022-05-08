@@ -5,8 +5,8 @@
 # GAIL.DISCRIMINATOR.lr is decreased to 2.5e-5
 # New: use rnn in discriminator
 
-BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11.yaml" ###
-DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_seed11.yaml" ###
+BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_1x10_seed3.yaml" ###
+DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_1x10_seed3.yaml" ###
 CMD_TRAILING_OPTS: ["TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS", "50000"]
 TRAINER_NAME: "gail"
 ENV_NAME: "NavGAILEnv"
@@ -14,13 +14,13 @@ SIMULATOR_GPU_ID: 0
 TORCH_GPU_ID: 0
 #VIDEO_OPTION: ["disk", "tensorboard"]
 VIDEO_OPTION: ["disk"]
-TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_single_episode_v3/seed11" ###
-VIDEO_DIR: "/home/fyh/Data/video_dir/gail_single_episode_v3/seed11" ###
+TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_1x10_v3/seed3" ###
+VIDEO_DIR: "/home/fyh/Data/video_dir/gail_1x10_v3/seed3" ###
 TEST_EPISODE_COUNT: -1
-EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v3/seed11" ###
+EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_1x10_v3/seed3" ###
 NUM_ENVIRONMENTS: 2
 SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR"]
-CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_single_episode_v3/seed11" ###
+CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_1x10_v3/seed3" ###
 NUM_UPDATES: 100000
 LOG_INTERVAL: 10
 NUM_CHECKPOINTS: 100
@@ -29,7 +29,7 @@ NUM_CHECKPOINTS: 100
 FORCE_TORCH_SINGLE_THREADED: True
 
 EVAL:
-  SPLIT: "train_1x1_seed11"
+  SPLIT: "train_1x10_seed3"
 
 RL:
   SUCCESS_REWARD: 2.5

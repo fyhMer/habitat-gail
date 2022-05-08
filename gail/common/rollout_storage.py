@@ -49,6 +49,14 @@ class RolloutStorage:
             recurrent_hidden_state_size,
         )
 
+        # for rnn in discriminator
+        self.buffers["discrim_start_hidden_states"] = torch.zeros(
+            numsteps + 1, # TODO: only index 0 is used, optimize in future
+            num_envs,
+            num_recurrent_layers,
+            recurrent_hidden_state_size
+        )
+
         # self.buffers["rewards"] = torch.zeros(numsteps + 1, num_envs, 1)
         self.buffers["total_rewards"] = torch.zeros(numsteps + 1, num_envs, 1)
         self.buffers["task_rewards"] = torch.zeros(numsteps + 1, num_envs, 1)
@@ -111,6 +119,17 @@ class RolloutStorage:
 
     def to(self, device):
         self.buffers.map_in_place(lambda v: v.to(device))
+
+    def insert_dscrim_start_hidden_states(
+        self,
+        dscrim_start_hidden_states,
+        env_slice
+    ):
+        self.buffers.set(
+            (self.current_rollout_step_idx, env_slice),
+            {"discrim_start_hidden_states": dscrim_start_hidden_states},
+            strict=False,
+        )
 
     def insert(
         self,
@@ -269,9 +288,13 @@ class RolloutStorage:
             (demo_env_slice.start + torch.randperm(demo_env_slice.stop - demo_env_slice.start)).chunk(num_mini_batch)
         ):
             batch_agent = self.buffers[0: self.current_rollout_step_idx, agent_env_inds]
+            batch_agent["discrim_start_hidden_states"] = batch_agent["discrim_start_hidden_states"][0:1]
             batch_demo = self.buffers[0: self.current_rollout_step_idx, demo_env_inds]
+            batch_demo["discrim_start_hidden_states"] = batch_demo["discrim_start_hidden_states"][0:1]
 
             yield (
                 batch_agent.map(lambda v: v.flatten(0, 1)),
-                batch_demo.map(lambda v: v.flatten(0, 1))
+                batch_demo.map(lambda v: v.flatten(0, 1)),
+                agent_env_inds,
+                demo_env_inds
             )

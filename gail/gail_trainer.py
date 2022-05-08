@@ -205,9 +205,9 @@ class GAILTrainer(BaseRLTrainer):
             normalize_visual_inputs=self.config.GAIL.DISCRIMINATOR.normalize_visual_inputs,
             force_blind_policy=False,
             discrete_actions=True,
-            # use_rnn=self.config.GAIL.DISCRIMINATOR.use_rnn,
-            # num_recurrent_layers=self.config.GAIL.DISCRIMINATOR.num_recurrent_layers,
-            # rnn_type=self.config.GAIL.DISCRIMINATOR.rnn_type
+            use_rnn=self.config.GAIL.DISCRIMINATOR.use_rnn,
+            num_recurrent_layers=self.config.GAIL.DISCRIMINATOR.num_recurrent_layers,
+            rnn_type=self.config.GAIL.DISCRIMINATOR.rnn_type
         )
         self.discriminator_net.to(self.device)
         self.discriminator = Discriminator(
@@ -574,25 +574,25 @@ class GAILTrainer(BaseRLTrainer):
         )
         task_rewards = task_rewards.unsqueeze(1)
 
-        if buffer_index == self._agent_buffer_idx:
-            # TODO: Compute GAIL rewards
-            with torch.no_grad():
-                step_batch = self.rollouts.buffers[
-                    self.rollouts.current_rollout_step_idxs[buffer_index],
-                    env_slice,
-                ]
-                gail_rewards = self.discriminator.get_reward(
-                    observations=step_batch["observations"],
-                    prev_actions=step_batch["prev_actions"],
-                    masks=step_batch["masks"],
-                    curr_actions=step_batch["actions"]
-                ).to(device)
-
-                total_rewards = self.config.GAIL.gail_reward_coef * gail_rewards \
-                              + self.config.GAIL.task_reward_coef * task_rewards
-        else:
-            gail_rewards = None
-            total_rewards = None
+        # if buffer_index == self._agent_buffer_idx:
+        #     # TODO: Compute GAIL rewards
+        #     with torch.no_grad():
+        #         step_batch = self.rollouts.buffers[
+        #             self.rollouts.current_rollout_step_idxs[buffer_index],
+        #             env_slice,
+        #         ]
+        #         gail_rewards = self.discriminator.get_reward(
+        #             observations=step_batch["observations"],
+        #             prev_actions=step_batch["prev_actions"],
+        #             masks=step_batch["masks"],
+        #             curr_actions=step_batch["actions"]
+        #         ).to(device)
+        #
+        #         total_rewards = self.config.GAIL.gail_reward_coef * gail_rewards \
+        #                       + self.config.GAIL.task_reward_coef * task_rewards
+        # else:
+        #     gail_rewards = None
+        #     total_rewards = None
 
         not_done_masks = torch.tensor(
             [[not done] for done in dones],
@@ -614,13 +614,13 @@ class GAILTrainer(BaseRLTrainer):
         current_ep_task_reward = self.current_episode_stats["task_reward"][env_slice]
         self.running_episode_stats["task_reward"][env_slice] += current_ep_task_reward.where(done_masks, current_ep_task_reward.new_zeros(()))  # type: ignore
 
-        if buffer_index == self._agent_buffer_idx:
-            self.current_episode_stats["gail_reward"][env_slice] += gail_rewards # TODO: check gail_rewards None
-            self.current_episode_stats["total_reward"][env_slice] += total_rewards # TODO: compute total rewards
-            current_ep_gail_reward = self.current_episode_stats["gail_reward"][env_slice]
-            current_ep_total_reward = self.current_episode_stats["total_reward"][env_slice]
-            self.running_episode_stats["gail_reward"][env_slice] += current_ep_gail_reward.where(done_masks, current_ep_gail_reward.new_zeros(()))  # type: ignore
-            self.running_episode_stats["total_reward"][env_slice] += current_ep_total_reward.where(done_masks, current_ep_total_reward.new_zeros(()))  # type: ignore
+        # if buffer_index == self._agent_buffer_idx:
+        #     self.current_episode_stats["gail_reward"][env_slice] += gail_rewards # TODO: check gail_rewards None
+        #     self.current_episode_stats["total_reward"][env_slice] += total_rewards # TODO: compute total rewards
+        #     current_ep_gail_reward = self.current_episode_stats["gail_reward"][env_slice]
+        #     current_ep_total_reward = self.current_episode_stats["total_reward"][env_slice]
+        #     self.running_episode_stats["gail_reward"][env_slice] += current_ep_gail_reward.where(done_masks, current_ep_gail_reward.new_zeros(()))  # type: ignore
+        #     self.running_episode_stats["total_reward"][env_slice] += current_ep_total_reward.where(done_masks, current_ep_total_reward.new_zeros(()))  # type: ignore
 
         for k, v_k in self._extract_scalars_from_infos(infos).items():
             v = torch.tensor(
@@ -636,9 +636,9 @@ class GAILTrainer(BaseRLTrainer):
             self.running_episode_stats[k][env_slice] += v.where(done_masks, v.new_zeros(()))  # type: ignore
 
         self.current_episode_stats["task_reward"][env_slice].masked_fill_(done_masks, 0.0)
-        if buffer_index == self._agent_buffer_idx:
-            self.current_episode_stats["gail_reward"][env_slice].masked_fill_(done_masks, 0.0)
-            self.current_episode_stats["total_reward"][env_slice].masked_fill_(done_masks, 0.0)
+        # if buffer_index == self._agent_buffer_idx:
+        #     self.current_episode_stats["gail_reward"][env_slice].masked_fill_(done_masks, 0.0)
+        #     self.current_episode_stats["total_reward"][env_slice].masked_fill_(done_masks, 0.0)
 
         if self._static_encoder:
             with torch.no_grad():
@@ -648,8 +648,8 @@ class GAILTrainer(BaseRLTrainer):
             actions=demo_actions if buffer_index == self._demo_buffer_idx else None, # TODO: check this
             next_observations=batch,
             task_rewards=task_rewards,
-            gail_rewards=gail_rewards,
-            total_rewards=total_rewards,
+            gail_rewards=None, # gail_rewards,
+            total_rewards=None, # total_rewards,
             next_masks=not_done_masks,
             buffer_index=buffer_index,
         )
@@ -666,7 +666,6 @@ class GAILTrainer(BaseRLTrainer):
         return self._collect_environment_result()
 
     def _compute_gail_rewards_for_rollouts(self):
-        device = self.rollouts.buffers["gail_rewards"].device  # device: cpu
         with torch.no_grad():
             batch = self.rollouts.buffers[
                 0: self.rollouts.current_rollout_step_idxs[self._agent_buffer_idx],
@@ -679,8 +678,9 @@ class GAILTrainer(BaseRLTrainer):
                 observations=batch["observations"],
                 prev_actions=batch["prev_actions"],
                 masks=batch["masks"],
-                curr_actions=batch["actions"]
-            ).view(n_steps, n_envs, -1).to(device)
+                curr_actions=batch["actions"],
+                rnn_hidden_states=batch["discrim_start_hidden_states"][0:1]
+            ).view(n_steps, n_envs, -1).to(self.rollouts.buffers["gail_rewards"].device)
 
             self.rollouts.buffers["gail_rewards"][0: n_steps, self._agent_env_slice] = gail_rewards
 
@@ -688,6 +688,25 @@ class GAILTrainer(BaseRLTrainer):
                           + self.config.GAIL.task_reward_coef \
                           * self.rollouts.buffers["task_rewards"][0: n_steps, self._agent_env_slice]
             self.rollouts.buffers["total_rewards"][0: n_steps, self._agent_env_slice] = total_rewards
+
+            stats_device = self.current_episode_stats["gail_reward"].device
+            gail_rewards = gail_rewards.to(stats_device)
+            total_rewards = total_rewards.to(stats_device)
+            done_masks = torch.logical_not(batch["masks"][:, self._agent_env_slice]).to(stats_device)
+            for i in range(n_steps):
+                # print(self.current_episode_stats["gail_reward"][self._agent_env_slice].shape, gail_rewards[i].shape)
+                # print(device, self.current_episode_stats["gail_reward"][self._agent_env_slice].device, gail_rewards[i].device)
+                self.current_episode_stats["gail_reward"][self._agent_env_slice] += gail_rewards[i]
+                self.current_episode_stats["total_reward"][self._agent_env_slice] += total_rewards[i]
+                current_ep_gail_reward = self.current_episode_stats["gail_reward"][self._agent_env_slice]
+                current_ep_total_reward = self.current_episode_stats["total_reward"][self._agent_env_slice]
+                self.running_episode_stats["gail_reward"][self._agent_env_slice] += current_ep_gail_reward.where(
+                    done_masks[i], current_ep_gail_reward.new_zeros(())
+                )  # type: ignore
+                self.running_episode_stats["total_reward"][self._agent_env_slice] += current_ep_total_reward.where(
+                    done_masks[i], current_ep_total_reward.new_zeros(()))  # type: ignore
+                self.current_episode_stats["gail_reward"][self._agent_env_slice].masked_fill_(done_masks[i], 0.0)
+                self.current_episode_stats["total_reward"][self._agent_env_slice].masked_fill_(done_masks[i], 0.0)
 
     def _update_discriminator(self):
         return self.discriminator.update(self.rollouts)
