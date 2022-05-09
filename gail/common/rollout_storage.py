@@ -21,6 +21,7 @@ class RolloutStorage:
         observation_space,
         action_space,
         recurrent_hidden_state_size,
+        discrim_recurrent_hidden_state_size,
         num_recurrent_layers=1,
         discrim_num_recurrent_layers=1,
         action_shape: Optional[Tuple[int]] = None,
@@ -32,6 +33,7 @@ class RolloutStorage:
         self.buffers["observations"] = TensorDict()
 
         for sensor in observation_space.spaces:
+            print(sensor, observation_space.spaces[sensor].dtype)
             self.buffers["observations"][sensor] = torch.from_numpy(
                 np.zeros(
                     (
@@ -55,7 +57,7 @@ class RolloutStorage:
             numsteps + 1, # TODO: only index 0 is used, optimize in future
             num_envs,
             discrim_num_recurrent_layers,
-            recurrent_hidden_state_size
+            discrim_recurrent_hidden_state_size
         )
 
         # self.buffers["rewards"] = torch.zeros(numsteps + 1, num_envs, 1)

@@ -25,7 +25,7 @@ from habitat_baselines.common.baseline_registry import baseline_registry
 from habitat_baselines.rl.ppo import Net, Policy
 
 
-class ObjectNavILNet(Net):
+class ObjectNavGAILNet(Net):
     r"""A baseline sequence to sequence network that concatenates instruction,
     RGB, and depth encodings before decoding an action distribution with an RNN.
     Modules:
@@ -34,6 +34,8 @@ class ObjectNavILNet(Net):
         RGB encoder
         RNN state encoder
     """
+
+    # Yunhai's Notes: modified from ObjectNavILNet
 
     def __init__(self, observation_space: Space, model_config: Config,
                  num_actions, device=None):
@@ -70,7 +72,7 @@ class ObjectNavILNet(Net):
                 output_size=model_config.RGB_ENCODER.output_size,
                 backbone=model_config.RGB_ENCODER.backbone,
                 trainable=model_config.RGB_ENCODER.train_encoder,
-                normalize_visual_inputs=model_config.RGB_ENCODER.normalize_visual_inputs,
+                normalize_visual_inputs=model_config.normalize_visual_inputs,
             )
             rnn_input_size += model_config.RGB_ENCODER.output_size
         else:
@@ -151,7 +153,6 @@ class ObjectNavILNet(Net):
 
         # Semantic
         sem_seg_output_size = 0
-        self.semantic_predictor = None
         self.is_thda = False
         if model_config.USE_SEMANTICS:
             logger.info("\n\nSetting up semantic sensor")
@@ -182,24 +183,24 @@ class ObjectNavILNet(Net):
 
             self.embed_sge = model_config.embed_sge
             if self.embed_sge:
-                self.task_cat2mpcat40 = torch.tensor(task_cat2mpcat40,
-                                                     device=device)
-                if model_config.hm3d_goal:
-                    self.task_cat2mpcat40 = torch.tensor(task_cat2hm3dcat40,
-                                                         device=device)
-                    logger.info("Setting up HM3D goal map")
-                self.mapping_mpcat40_to_goal = np.zeros(
-                    max(
-                        max(mapping_mpcat40_to_goal21.keys()) + 1,
-                        50,
-                    ),
-                    dtype=np.int8,
-                )
-
-                for key, value in mapping_mpcat40_to_goal21.items():
-                    self.mapping_mpcat40_to_goal[key] = value
-                self.mapping_mpcat40_to_goal = torch.tensor(
-                    self.mapping_mpcat40_to_goal, device=device)
+                # self.task_cat2mpcat40 = torch.tensor(task_cat2mpcat40,
+                #                                      device=device)
+                # if model_config.hm3d_goal:
+                #     self.task_cat2mpcat40 = torch.tensor(task_cat2hm3dcat40,
+                #                                          device=device)
+                #     logger.info("Setting up HM3D goal map")
+                # self.mapping_mpcat40_to_goal = np.zeros(
+                #     max(
+                #         max(mapping_mpcat40_to_goal21.keys()) + 1,
+                #         50,
+                #     ),
+                #     dtype=np.int8,
+                # )
+                #
+                # for key, value in mapping_mpcat40_to_goal21.items():
+                #     self.mapping_mpcat40_to_goal[key] = value
+                # self.mapping_mpcat40_to_goal = torch.tensor(
+                #     self.mapping_mpcat40_to_goal, device=device)
                 rnn_input_size += 1
 
         if EpisodicGPSSensor.cls_uuid in observation_space.spaces:
@@ -280,12 +281,14 @@ class ObjectNavILNet(Net):
                     -1, observations["objectgoal"].size(2)
                 )
 
-            idx = self.task_cat2mpcat40[
-                observations["objectgoal"].long()
-            ]
-            if self.is_thda:
-                idx = self.mapping_mpcat40_to_goal[idx].long()
-            idx = idx.to(obj_semantic.device)
+            # idx = self.task_cat2mpcat40[
+            #     observations["objectgoal"].long()
+            # ]
+            # if self.is_thda:
+            #     idx = self.mapping_mpcat40_to_goal[idx].long()
+            # idx = idx.to(obj_semantic.device)
+
+            idx = observations["objectgoal"].long().to(obj_semantic.device)
 
             if len(idx.size()) == 3:
                 idx = idx.squeeze(1)
@@ -327,6 +330,7 @@ class ObjectNavILNet(Net):
 
         if self.model_config.USE_SEMANTICS:
             semantic_obs = observations["semantic"]
+            # print("semantic_obs.shape", semantic_obs.shape)
             if len(semantic_obs.size()) == 4:
                 observations["semantic"] = semantic_obs.contiguous().view(
                     -1, semantic_obs.size(2), semantic_obs.size(3)
@@ -381,33 +385,101 @@ class ObjectNavILNet(Net):
         return x, rnn_hidden_states
 
 
+# @baseline_registry.register_policy
+# class ObjectNavGAILPolicy(Policy):
+#     def __init__(
+#         self, observation_space: Space, action_space: Space,
+#         model_config: Config
+#     ):
+#         super().__init__(
+#             ObjectNavGAILNet(
+#                 observation_space=observation_space,
+#                 model_config=model_config,
+#                 num_actions=action_space.n, #TODO
+#             ),
+#             dim_actions=action_space.n,
+#             policy_config=None
+#             # no_critic=model_config.CRITIC.no_critic,
+#             # mlp_critic=model_config.CRITIC.mlp_critic,
+#             # critic_hidden_dim=model_config.CRITIC.hidden_dim,
+#         )
+#
+#     @classmethod
+#     def from_config(
+#         cls, config: Config, observation_space, action_space
+#     ):
+#         return cls(
+#             observation_space=observation_space,
+#             action_space=action_space,
+#             model_config=config.MODEL,
+#         )
+#
+#     def freeze_visual_encoders(self):
+#         if hasattr(self.net, "rgb_encoder"):
+#             for param in self.net.rgb_encoder.parameters():
+#                 param.requires_grad_(False)
+#
+#         if hasattr(self.net, "depth_encoder"):
+#             for param in self.net.depth_encoder.parameters():
+#                 param.requires_grad_(False)
+#
+#         if hasattr(self.net, "sem_seg_encoder"):
+#             for param in self.net.sem_seg_encoder.parameters():
+#                 param.requires_grad_(False)
+
+
 @baseline_registry.register_policy
 class ObjectNavGAILPolicy(Policy):
     def __init__(
-        self, observation_space: Space, action_space: Space,
-        model_config: Config
+        self,
+        observation_space: Dict,
+        action_space,
+        hidden_size: int = 512,
+        num_recurrent_layers: int = 1,
+        rnn_type: str = "GRU",
+        resnet_baseplanes: int = 32,
+        backbone: str = "resnet18",
+        normalize_visual_inputs: bool = False,
+        force_blind_policy: bool = False,
+        policy_config: Config = None,
+        model_config: Config = None,
+        **kwargs
     ):
+        if policy_config is not None:
+            discrete_actions = (
+                policy_config.action_distribution_type == "categorical"
+            )
+            self.action_distribution_type = (
+                policy_config.action_distribution_type
+            )
+        else:
+            discrete_actions = True
+            self.action_distribution_type = "categorical"
         super().__init__(
-            ObjectNavILNet(
+            ObjectNavGAILNet(
                 observation_space=observation_space,
                 model_config=model_config,
                 num_actions=action_space.n, #TODO
             ),
-            dim_actions=action_space.n,
-            policy_config=None
-            # no_critic=model_config.CRITIC.no_critic,
-            # mlp_critic=model_config.CRITIC.mlp_critic,
-            # critic_hidden_dim=model_config.CRITIC.hidden_dim,
+            dim_actions=action_space.n,  # for action distribution
+            policy_config=policy_config,
         )
 
     @classmethod
     def from_config(
-        cls, config: Config, observation_space, action_space
+        cls, config: Config, observation_space: Dict, action_space
     ):
         return cls(
             observation_space=observation_space,
             action_space=action_space,
-            model_config=config.MODEL,
+            hidden_size=config.RL.PPO.hidden_size,
+            rnn_type=config.RL.DDPPO.rnn_type,
+            num_recurrent_layers=config.RL.DDPPO.num_recurrent_layers,
+            backbone=config.RL.DDPPO.backbone,
+            normalize_visual_inputs="rgb" in observation_space.spaces,
+            force_blind_policy=config.FORCE_BLIND_POLICY,
+            policy_config=config.RL.POLICY,
+            model_config=config.MODEL
         )
 
     def freeze_visual_encoders(self):

@@ -86,6 +86,8 @@ class GAILTrainer(BaseRLTrainer):
         self._encoder = None
         self._obs_space = None
 
+        self.semantic_predictor = None
+
         # Distributed if the world size would be
         # greater than 1
         self._is_distributed = get_distrib_size()[2] > 1
@@ -104,6 +106,17 @@ class GAILTrainer(BaseRLTrainer):
             print("=" * 40, self._obs_space) # TODO: check the output
             print(self._obs_space[ObjectGoalSensor.cls_uuid].high)
             print(self._obs_space[ObjectGoalSensor.cls_uuid].high[0])
+
+            if self.config.MODEL.USE_PRED_SEMANTICS and "semantic" not in self._obs_space.spaces:
+                sem_embedding_size = self.config.MODEL.SEMANTIC_ENCODER.embedding_size
+                rgb_shape = self._obs_space.spaces["rgb"].shape
+                self._obs_space["semantic"] = spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(rgb_shape[0], rgb_shape[1]),
+                    dtype=np.uint8,
+                )
+            print(self._obs_space)
 
         return self._obs_space
 
@@ -196,6 +209,18 @@ class GAILTrainer(BaseRLTrainer):
         )
 
     def _setup_discriminator(self):
+        discrim_obs_transforms = []
+        discrim_obs_transform_names = (
+            self.config.GAIL.DISCRIMINATOR.OBS_TRANSFORMS.ENABLED_TRANSFORMS
+        )
+        for obs_transform_name in discrim_obs_transform_names:
+            print("T", obs_transform_name)
+            obs_trans_cls = baseline_registry.get_obs_transformer(
+                obs_transform_name
+            )
+            obs_transform = obs_trans_cls.from_config(self.config)
+            discrim_obs_transforms.append(obs_transform)
+
         self.discriminator_net = DiscriminatorNet(
             observation_space=self._obs_space,
             action_space=self.policy_action_space,
@@ -207,7 +232,8 @@ class GAILTrainer(BaseRLTrainer):
             discrete_actions=True,
             use_rnn=self.config.GAIL.DISCRIMINATOR.use_rnn,
             num_recurrent_layers=self.config.GAIL.DISCRIMINATOR.num_recurrent_layers,
-            rnn_type=self.config.GAIL.DISCRIMINATOR.rnn_type
+            rnn_type=self.config.GAIL.DISCRIMINATOR.rnn_type,
+            obs_transforms=discrim_obs_transforms
         )
         self.discriminator_net.to(self.device)
         self.discriminator = Discriminator(
@@ -311,6 +337,17 @@ class GAILTrainer(BaseRLTrainer):
         if rank0_only() and not os.path.isdir(self.config.CHECKPOINT_FOLDER):
             os.makedirs(self.config.CHECKPOINT_FOLDER)
 
+        # Load RedNet for semantics prediction
+        if self.config.MODEL.USE_PRED_SEMANTICS:
+            from gail.models.rednet import load_rednet
+            self.semantic_predictor = load_rednet(
+                self.device,
+                ckpt=self.config.MODEL.SEMANTIC_ENCODER.rednet_ckpt,
+                resize=True, # since we train on half-vision
+                num_classes=self.config.MODEL.SEMANTIC_ENCODER.num_classes
+            )
+            self.semantic_predictor.eval()
+
         self._setup_actor_critic_agent(ppo_cfg)
         self._setup_discriminator()
         if self._is_distributed:
@@ -355,8 +392,9 @@ class GAILTrainer(BaseRLTrainer):
             self.envs.num_envs,
             obs_space,
             self.policy_action_space,
-            ppo_cfg.hidden_size,
+            self.config.MODEL.STATE_ENCODER.hidden_size,# ppo_cfg.hidden_size,
             num_recurrent_layers=self.actor_critic.net.num_recurrent_layers,
+            discrim_recurrent_hidden_state_size=self.config.GAIL.DISCRIMINATOR.hidden_size,
             discrim_num_recurrent_layers=self.discriminator.net.num_recurrent_layers,
             is_double_buffered=self.config.GAIL.use_double_buffer,
             demo_buffer_idx=self._demo_buffer_idx,
@@ -374,6 +412,16 @@ class GAILTrainer(BaseRLTrainer):
         if self._static_encoder:
             with torch.no_grad():
                 batch["visual_features"] = self._encoder(batch)
+
+        if self.config.MODEL.USE_PRED_SEMANTICS:
+            with torch.no_grad():
+                # print("*** keys ****", batch.keys())
+                batch["semantic"] = self.semantic_predictor(
+                    batch["rgb"],
+                    batch["depth"]
+                ) - 1
+                print(">>> batch[semantic].shape", batch["semantic"].shape)
+                print(">>>", self.rollouts.buffers["observations"]["semantic"].shape)
 
         self.rollouts.buffers["observations"][0] = batch  # type: ignore
 
@@ -645,6 +693,13 @@ class GAILTrainer(BaseRLTrainer):
             with torch.no_grad():
                 batch["visual_features"] = self._encoder(batch)
 
+        if self.config.MODEL.USE_PRED_SEMANTICS:
+            with torch.no_grad():
+                batch["semantic"] = self.semantic_predictor(
+                    batch["rgb"],
+                    batch["depth"]
+                ) - 1
+
         self.rollouts.insert(
             actions=demo_actions if buffer_index == self._demo_buffer_idx else None, # TODO: check this
             next_observations=batch,
@@ -724,6 +779,13 @@ class GAILTrainer(BaseRLTrainer):
             step_batch = self.rollouts.buffers[
                 self.rollouts.current_rollout_step_idx
             ]
+
+            # if self.config.MODEL.USE_PRED_SEMANTICS:
+            #     step_batch["observations"][
+            #         "semantic"] = self.semantic_predictor(
+            #         step_batch["observations"]["rgb"],
+            #         step_batch["observations"]["depth"]
+            #     )
 
             next_value = self.actor_critic.get_value(
                 step_batch["observations"],

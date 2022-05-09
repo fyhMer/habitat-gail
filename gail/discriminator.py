@@ -3,7 +3,7 @@
 # Created by Yunhai Feng at 4:23 pm, 2022/4/30.
 
 
-from typing import Dict, Tuple, Sequence, Union
+from typing import Dict, Tuple, Sequence, Union, List
 
 import numpy as np
 from gym import spaces
@@ -31,6 +31,7 @@ from habitat_baselines.rl.models.rnn_state_encoder import (
     build_rnn_state_encoder,
 )
 from gail.common.rollout_storage import RolloutStorage
+from habitat_baselines.common.obs_transformers import apply_obs_transforms_batch
 
 
 class DiscriminatorNet(nn.Module):
@@ -55,8 +56,10 @@ class DiscriminatorNet(nn.Module):
         use_rnn: bool = False,
         num_recurrent_layers: int = 1,
         rnn_type: str = "GRU",
+        obs_transforms=None
     ):
         super().__init__()
+        self.obs_transforms = obs_transforms
         self.prev_action_embedding: nn.Module
         self.curr_action_embedding: nn.Module
         self.discrete_actions = discrete_actions
@@ -169,6 +172,7 @@ class DiscriminatorNet(nn.Module):
         )
 
         if not self.visual_encoder.is_blind:
+            print("****** self.visual_encoder.output_shape ****", self.visual_encoder.output_shape)
             self.visual_fc = nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(
@@ -221,16 +225,19 @@ class DiscriminatorNet(nn.Module):
         curr_actions,
         rnn_hidden_states=None
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        # preprocess
+        obs = apply_obs_transforms_batch(observations, self.obs_transforms)
         x = []
         if not self.is_blind:
-            visual_feats = observations.get(
-                "visual_features", self.visual_encoder(observations)
+            visual_feats = obs.get(
+                "visual_features", self.visual_encoder(obs)
             )
+            # print("VISUAL_FEATS SHAPE", visual_feats.shape)
             visual_feats = self.visual_fc(visual_feats)
             x.append(visual_feats)
 
-        if IntegratedPointGoalGPSAndCompassSensor.cls_uuid in observations:
-            goal_observations = observations[
+        if IntegratedPointGoalGPSAndCompassSensor.cls_uuid in obs:
+            goal_observations = obs[
                 IntegratedPointGoalGPSAndCompassSensor.cls_uuid
             ]
             if goal_observations.shape[1] == 2:
@@ -265,16 +272,16 @@ class DiscriminatorNet(nn.Module):
 
             x.append(self.tgt_embeding(goal_observations))
 
-        if PointGoalSensor.cls_uuid in observations:
-            goal_observations = observations[PointGoalSensor.cls_uuid]
+        if PointGoalSensor.cls_uuid in obs:
+            goal_observations = obs[PointGoalSensor.cls_uuid]
             x.append(self.pointgoal_embedding(goal_observations))
 
-        if ProximitySensor.cls_uuid in observations:
-            sensor_observations = observations[ProximitySensor.cls_uuid]
+        if ProximitySensor.cls_uuid in obs:
+            sensor_observations = obs[ProximitySensor.cls_uuid]
             x.append(self.proximity_embedding(sensor_observations))
 
-        if HeadingSensor.cls_uuid in observations:
-            sensor_observations = observations[HeadingSensor.cls_uuid]
+        if HeadingSensor.cls_uuid in obs:
+            sensor_observations = obs[HeadingSensor.cls_uuid]
             sensor_observations = torch.stack(
                 [
                     torch.cos(sensor_observations[0]),
@@ -284,17 +291,17 @@ class DiscriminatorNet(nn.Module):
             )
             x.append(self.heading_embedding(sensor_observations))
 
-        if ObjectGoalSensor.cls_uuid in observations:
-            object_goal = observations[ObjectGoalSensor.cls_uuid].long()
+        if ObjectGoalSensor.cls_uuid in obs:
+            object_goal = obs[ObjectGoalSensor.cls_uuid].long()
             # print("******** _n_object_categories:", self._n_object_categories)
             # print("object_goal", object_goal)
             x.append(self.obj_categories_embedding(object_goal).squeeze(dim=1))
 
-        if EpisodicCompassSensor.cls_uuid in observations:
+        if EpisodicCompassSensor.cls_uuid in obs:
             compass_observations = torch.stack(
                 [
-                    torch.cos(observations[EpisodicCompassSensor.cls_uuid]),
-                    torch.sin(observations[EpisodicCompassSensor.cls_uuid]),
+                    torch.cos(obs[EpisodicCompassSensor.cls_uuid]),
+                    torch.sin(obs[EpisodicCompassSensor.cls_uuid]),
                 ],
                 -1,
             )
@@ -302,13 +309,13 @@ class DiscriminatorNet(nn.Module):
                 self.compass_embedding(compass_observations.squeeze(dim=1))
             )
 
-        if EpisodicGPSSensor.cls_uuid in observations:
+        if EpisodicGPSSensor.cls_uuid in obs:
             x.append(
-                self.gps_embedding(observations[EpisodicGPSSensor.cls_uuid])
+                self.gps_embedding(obs[EpisodicGPSSensor.cls_uuid])
             )
 
-        if ImageGoalSensor.cls_uuid in observations:
-            goal_image = observations[ImageGoalSensor.cls_uuid]
+        if ImageGoalSensor.cls_uuid in obs:
+            goal_image = obs[ImageGoalSensor.cls_uuid]
             goal_output = self.goal_visual_encoder({"rgb": goal_image})
             x.append(self.goal_visual_fc(goal_output))
 

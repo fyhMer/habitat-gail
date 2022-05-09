@@ -73,22 +73,31 @@ def run_reference_replay(
         print("Replaying {}/{} episodes".format(num_episodes, len(env.episodes)))
         for ep_id in range(num_episodes):
             observation_list = []
-            env.reset()
-
+            observations = env.reset()
+            info = env.get_metrics()
+            print("info", info)
+            assert info is not None
             step_index = 1
             total_reward = 0.0
             episode = env.current_episode
+
+            # save first frame
+            # frame = observations_to_image({"rgb": observations["rgb"]},
+            #                               info={})
+            # frame = append_text_to_image(frame, "Find and go to {}".format(
+            #     episode.object_category))
+            # observation_list.append(frame)
 
             for _, action_name in tqdm(enumerate(env.current_episode.demo_sequence[step_index:])):
                 # action = possible_actions.index(data.action)
                 # action_name = env.task.get_action_name(
                 #     action
                 # )
-                print(action_name)
+                # print(action_name)
                 # action = ["STOP", "MOVE_BACKWARD", "TURN_RIGHT", "TURN_LEFT",
                 #            "LOOK_UP", "LOOK_DOWN"].index(action_name)
                 action = get_action_by_name(action_name)
-                print(action)
+                # print(action)
 
                 observations = env.step(action=action)
 
