@@ -357,6 +357,7 @@ class GAILTrainer(BaseRLTrainer):
             self.policy_action_space,
             ppo_cfg.hidden_size,
             num_recurrent_layers=self.actor_critic.net.num_recurrent_layers,
+            discrim_num_recurrent_layers=self.discriminator.net.num_recurrent_layers,
             is_double_buffered=self.config.GAIL.use_double_buffer,
             demo_buffer_idx=self._demo_buffer_idx,
             action_shape=action_shape,

@@ -22,6 +22,7 @@ class RolloutStorage:
         action_space,
         recurrent_hidden_state_size,
         num_recurrent_layers=1,
+        discrim_num_recurrent_layers=1,
         action_shape: Optional[Tuple[int]] = None,
         is_double_buffered: bool = False,
         demo_buffer_idx: int = 1, # index of buffer that collect demonstration rollouts
@@ -53,7 +54,7 @@ class RolloutStorage:
         self.buffers["discrim_start_hidden_states"] = torch.zeros(
             numsteps + 1, # TODO: only index 0 is used, optimize in future
             num_envs,
-            num_recurrent_layers,
+            discrim_num_recurrent_layers,
             recurrent_hidden_state_size
         )
 
