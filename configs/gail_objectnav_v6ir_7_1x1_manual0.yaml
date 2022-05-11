@@ -1,0 +1,167 @@
+# Created by Yunhai Feng at 2022/5/11
+
+# GAIL single episode v6 (modified from v3-1-1-1-2)
+# pure gail imitation, no task reward (gail_reward_coef = 1.0)
+# GAIL.DISCRIMINATOR.lr is decreased to 2.5e-5
+# v3: use rnn in discriminator
+# v3-1: use resnet18 instead of resnet50 in discriminator
+# v3-1-1: reduce discriminator rnn layers: num_recurrent_layers = 1
+# v3-1-1-1: discriminator_epoch = 1
+# v3-1-1-1-2: GAIL.DISCRIMINATOR.lr = 1.0e-6
+# v6: use habitat-web model (with rednet for semantic prediction)
+# v6ir, `ir` stands for imitation+reinforce:
+#     gail_reward_coef = 1.0
+#     task_reward_coef = 1.0
+# New: PPO.lr = 1.0e-5 for v6ir-7
+BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_manual0.yaml" ###
+DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_manual0.yaml" ###
+CMD_TRAILING_OPTS: ["TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS", "50000"]
+TRAINER_NAME: "gail"
+ENV_NAME: "NavGAILEnv"
+SIMULATOR_GPU_ID: 0
+TORCH_GPU_ID: 0
+#VIDEO_OPTION: ["disk", "tensorboard"]
+VIDEO_OPTION: ["disk"]
+TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_v6ir_7_1x1/manual0" ###
+VIDEO_DIR: "/home/fyh/Data/video_dir/gail_v6ir_7_1x1/manual0" ###
+TEST_EPISODE_COUNT: -1
+EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_v6ir_7_1x1/manual0" ###
+NUM_ENVIRONMENTS: 2
+#SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR", "SEMANTIC_SENSOR"]
+SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR"]
+CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_v6ir_7_1x1/manual0" ###
+NUM_UPDATES: 100000
+LOG_INTERVAL: 10
+NUM_CHECKPOINTS: 100
+# Force PyTorch to be single threaded as
+# this improves performance considerably
+FORCE_TORCH_SINGLE_THREADED: True
+
+EVAL:
+  SPLIT: "train_1x1_manual0"
+
+RL:
+  SUCCESS_REWARD: 2.5
+  SLACK_REWARD: -1e-3
+
+  POLICY:
+    name: "ObjectNavGAILPolicy"
+    OBS_TRANSFORMS:
+      ENABLED_TRANSFORMS: ("ResizeShortestEdge", "CenterCropper")
+
+  PPO:
+    # ppo params
+    clip_param: 0.2
+    ppo_epoch: 4
+    num_mini_batch: 1
+    value_loss_coef: 0.5
+    entropy_coef: 0.01
+    lr: 1.0e-5
+    eps: 1e-5
+    max_grad_norm: 0.2
+    num_steps: 64
+    use_gae: True
+    gamma: 0.99
+    tau: 0.95
+    use_linear_clip_decay: False
+    use_linear_lr_decay: False
+    reward_window_size: 50
+    use_normalized_advantage: False
+
+    hidden_size: 512
+
+  DDPPO:
+    sync_frac: 0.6
+    # The PyTorch distributed backend to use
+    distrib_backend: NCCL
+    # Visual encoder backbone
+    pretrained_weights: data/ddppo-models/gibson-2plus-resnet50.pth
+    # Initialize with pretrained weights
+    pretrained: False
+    # Initialize just the visual encoder backbone with pretrained weights
+    pretrained_encoder: False
+    # Whether or not the visual encoder backbone will be trained.
+    train_encoder: True
+    # Whether or not to reset the critic linear layer
+    reset_critic: True
+
+    # Model parameters
+    backbone: resnet50
+    rnn_type: LSTM
+    num_recurrent_layers: 2
+
+GAIL:
+  use_double_buffer: True
+  gail_reward_coef: 1.0 # 0.5
+  task_reward_coef: 1.0 # note [v5 param]
+  sparse_reward_only: True # note [v5 param]
+  is_demonstration_env: False
+
+  DISCRIMINATOR:
+    OBS_TRANSFORMS:
+#      ENABLED_TRANSFORMS: ["ResizeShortestEdge", "CenterCropper"]
+      ENABLED_TRANSFORMS: []
+    hidden_size: 512
+    resnet_baseplanes: 32
+    backbone: resnet18
+    normalize_visual_inputs: False
+
+    # new params added in v-3 >>>
+    use_rnn: True
+    num_recurrent_layers: 1
+    rnn_type: LSTM
+    # <<< end
+
+    discriminator_epoch: 1 # 8
+    num_mini_batch: 1
+    lr: 1.0e-6
+    eps: 1e-5
+    use_linear_lr_decay: False
+    max_grad_norm: 0.2
+
+MODEL:
+  ablate_depth: False
+  ablate_rgb: False
+  num_recurrent_layers: 2
+  rnn_type: "GRU"
+  backbone: "resnet18"
+  resnet_baseplanes: 32
+  normalize_visual_inputs: False
+  force_blind_policy: False
+  embed_sge: True
+  embed_goal_seg: False
+  sem_seg_pred: True
+  NO_VISION: False
+  USE_SEMANTICS: False
+  USE_PRED_SEMANTICS: False
+  SWITCH_TO_PRED_SEMANTICS_UPDATE: 0
+  SEMANTIC_ENCODER:
+#    rednet_ckpt: "data/rednet-models/rednet_semmap_mp3d_40_v2_vince.pth"
+    rednet_ckpt: "/home/fyh/Data/rednet_models/rednet_semmap_mp3d_tuned.pth"
+    cnn_type: "ResnetSemSegEncoder"
+    output_size: 256
+    backbone: "resnet18"
+    train_encoder: True
+    embedding_size: 4
+    is_thda: True
+    num_classes: 29
+  RGB_ENCODER:
+    cnn_type: "ResnetRGBEncoder"
+    output_size: 256
+    backbone: "resnet18"
+    train_encoder: True
+  DEPTH_ENCODER:
+    cnn_type: "VlnResnetDepthEncoder"
+    output_size: 128
+    backbone: "resnet50"
+    trainable: False
+#    ddppo_checkpoint: "data/ddppo-models/gibson-2plus-resnet50.pth"
+    ddppo_checkpoint: "/home/fyh/Data/ddppo_models/gibson-2plus-resnet50.pth"
+  STATE_ENCODER:
+    hidden_size: 2048
+    rnn_type: "GRU"
+    num_recurrent_layers: 2
+  SEQ2SEQ:
+    use_prev_action: True
+  PROGRESS_MONITOR:
+    use: False
