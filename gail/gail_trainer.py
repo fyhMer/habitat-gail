@@ -168,23 +168,36 @@ class GAILTrainer(BaseRLTrainer):
             pretrained_state = torch.load(
                 self.config.RL.DDPPO.pretrained_weights, map_location="cpu"
             )
+            logger.info("Pretrained Weights Loaded")
 
         if self.config.RL.DDPPO.pretrained:
-            self.actor_critic.load_state_dict(
-                {   # type: ignore
-                    k[len("actor_critic.") :]: v
-                    for k, v in pretrained_state["state_dict"].items()
-                }
-            )
-        elif self.config.RL.DDPPO.pretrained_encoder:
-            prefix = "actor_critic.net.visual_encoder."
-            self.actor_critic.net.visual_encoder.load_state_dict(
+            # self.actor_critic.load_state_dict(
+            #     {   # type: ignore
+            #         k[len("actor_critic.") :]: v
+            #         for k, v in pretrained_state["state_dict"].items()
+            #     }
+            # )
+            missing_keys = self.actor_critic.load_state_dict(
                 {
-                    k[len(prefix):]: v
+                    k.replace("model.", ""): v
                     for k, v in pretrained_state["state_dict"].items()
-                    if k.startswith(prefix)
-                }
+                }, strict=False
             )
+            logger.info("Loading checkpoint missing keys: {}".format(missing_keys))
+
+            if self.config.RL.DDPPO.freeze_encoders:
+                self.actor_critic.freeze_visual_encoders()
+                logger.info("Using frozen pretraiend encoders")
+
+        # elif self.config.RL.DDPPO.pretrained_encoder:
+        #     prefix = "actor_critic.net.visual_encoder."
+        #     self.actor_critic.net.visual_encoder.load_state_dict(
+        #         {
+        #             k[len(prefix):]: v
+        #             for k, v in pretrained_state["state_dict"].items()
+        #             if k.startswith(prefix)
+        #         }
+        #     )
 
         if not self.config.RL.DDPPO.train_encoder:
             self._static_encoder = True
@@ -209,6 +222,7 @@ class GAILTrainer(BaseRLTrainer):
         )
 
     def _setup_discriminator(self):
+
         discrim_obs_transforms = []
         discrim_obs_transform_names = (
             self.config.GAIL.DISCRIMINATOR.OBS_TRANSFORMS.ENABLED_TRANSFORMS
@@ -221,8 +235,14 @@ class GAILTrainer(BaseRLTrainer):
             obs_transform = obs_trans_cls.from_config(self.config)
             discrim_obs_transforms.append(obs_transform)
 
+        discriminator_observation_space = spaces.Dict({k: v for k, v in self._obs_space.items() if k != "semantic"})
+        print("discriminator_observation_space", discriminator_observation_space)
+        discriminator_observation_space = apply_obs_transforms_obs_space(
+            discriminator_observation_space, discrim_obs_transforms
+        )
+
         self.discriminator_net = DiscriminatorNet(
-            observation_space=self._obs_space,
+            observation_space=discriminator_observation_space,
             action_space=self.policy_action_space,
             hidden_size=self.config.GAIL.DISCRIMINATOR.hidden_size,
             backbone=self.config.GAIL.DISCRIMINATOR.backbone,

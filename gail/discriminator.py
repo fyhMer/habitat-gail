@@ -58,6 +58,7 @@ class DiscriminatorNet(nn.Module):
         rnn_type: str = "GRU",
         obs_transforms=None
     ):
+        print("Initializing DiscriminatorNet >>>>>")
         super().__init__()
         self.obs_transforms = obs_transforms
         self.prev_action_embedding: nn.Module
@@ -77,6 +78,7 @@ class DiscriminatorNet(nn.Module):
             IntegratedPointGoalGPSAndCompassSensor.cls_uuid
             in observation_space.spaces
         ):
+            print("with IntegratedPointGoalGPSAndCompassSensor")
             n_input_goal = (
                 observation_space.spaces[
                     IntegratedPointGoalGPSAndCompassSensor.cls_uuid
@@ -87,6 +89,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if ObjectGoalSensor.cls_uuid in observation_space.spaces:
+            print("with ObjectGoalSensor")
             self._n_object_categories = (
                 int(
                     observation_space.spaces[ObjectGoalSensor.cls_uuid].high[0]
@@ -100,6 +103,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if EpisodicGPSSensor.cls_uuid in observation_space.spaces:
+            print("with EpisodicGPSSensor")
             input_gps_dim = observation_space.spaces[
                 EpisodicGPSSensor.cls_uuid
             ].shape[0]
@@ -107,6 +111,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if PointGoalSensor.cls_uuid in observation_space.spaces:
+            print("with PointGoalSensor")
             input_pointgoal_dim = observation_space.spaces[
                 PointGoalSensor.cls_uuid
             ].shape[0]
@@ -114,6 +119,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if HeadingSensor.cls_uuid in observation_space.spaces:
+            print("with HeadingSensor")
             input_heading_dim = (
                 observation_space.spaces[HeadingSensor.cls_uuid].shape[0] + 1
             )
@@ -122,6 +128,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if ProximitySensor.cls_uuid in observation_space.spaces:
+            print("with ProximitySensor")
             input_proximity_dim = observation_space.spaces[
                 ProximitySensor.cls_uuid
             ].shape[0]
@@ -129,6 +136,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if EpisodicCompassSensor.cls_uuid in observation_space.spaces:
+            print("with EpisodicCompassSensor")
             assert (
                 observation_space.spaces[EpisodicCompassSensor.cls_uuid].shape[
                     0
@@ -140,6 +148,7 @@ class DiscriminatorNet(nn.Module):
             total_embedding_size += 32
 
         if ImageGoalSensor.cls_uuid in observation_space.spaces:
+            print("with ImageGoalSensor")
             goal_observation_space = spaces.Dict(
                 {"rgb": observation_space.spaces[ImageGoalSensor.cls_uuid]}
             )
@@ -203,6 +212,7 @@ class DiscriminatorNet(nn.Module):
         )
 
         self.train()
+        print("<<<<< DiscriminatorNet Initialized!")
 
     @property
     def output_size(self):
@@ -232,7 +242,7 @@ class DiscriminatorNet(nn.Module):
             visual_feats = obs.get(
                 "visual_features", self.visual_encoder(obs)
             )
-            # print("VISUAL_FEATS SHAPE", visual_feats.shape)
+            # print("visual_feats.shape", visual_feats.shape)
             visual_feats = self.visual_fc(visual_feats)
             x.append(visual_feats)
 

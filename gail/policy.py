@@ -233,6 +233,7 @@ class ObjectNavGAILNet(Net):
                 + 1
             )
             if self.is_thda:
+                print("IS THDA!!!")
                 self._n_object_categories = 28
             logger.info(
                 "Object categories: {}".format(self._n_object_categories))
@@ -486,11 +487,14 @@ class ObjectNavGAILPolicy(Policy):
         if hasattr(self.net, "rgb_encoder"):
             for param in self.net.rgb_encoder.parameters():
                 param.requires_grad_(False)
+            logger.info("rgb encoder is frozen")
 
         if hasattr(self.net, "depth_encoder"):
             for param in self.net.depth_encoder.parameters():
                 param.requires_grad_(False)
+            logger.info("depth encoder is frozen")
 
         if hasattr(self.net, "sem_seg_encoder"):
             for param in self.net.sem_seg_encoder.parameters():
                 param.requires_grad_(False)
+            logger.info("sem_seg_encoder is frozen")
