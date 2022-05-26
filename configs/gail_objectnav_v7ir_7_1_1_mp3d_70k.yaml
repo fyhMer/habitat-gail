@@ -10,27 +10,28 @@
 # v3-1-1-1-2: GAIL.DISCRIMINATOR.lr = 1.0e-6
 # v6: use habitat-web model (with rednet for semantic prediction)
 # v6ir, `ir` stands for imitation+reinforce:
-#     gail_reward_coef = 1.0
+#     gail_reward_coef = 0.01  NEW for v7_1_1
 #     task_reward_coef = 1.0
 # PPO.lr = 1.0e-5 for v6ir-7 and v7ir-7
-# New: v7: use habitat-web pretrained weights
-BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_manual0.yaml" ###
-DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_manual0.yaml" ###
+# v7: use habitat-web pretrained weights
+# NEW: v7-1: load discriminator pretrained weights
+BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d.yaml" ###
+DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d.yaml" ###
 CMD_TRAILING_OPTS: ["TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS", "50000"]
 TRAINER_NAME: "gail"
 ENV_NAME: "NavGAILEnv"
 SIMULATOR_GPU_ID: 0
 TORCH_GPU_ID: 0
 #VIDEO_OPTION: ["disk", "tensorboard"]
-VIDEO_OPTION: ["disk"]
-TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_v7ir_7_1x1/manual0" ###
-VIDEO_DIR: "/home/fyh/Data/video_dir/gail_v7ir_7_1x1/manual0" ###
+VIDEO_OPTION: []
+TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_v7ir_7_1_1_mp3d_70k/train" ###
+VIDEO_DIR: "/home/fyh/Data/video_dir/gail_v7ir_7_1_1_mp3d_70k/train" ###
 TEST_EPISODE_COUNT: -1
-EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_v7ir_7_1x1/manual0" ###
+EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_v7ir_7_1_1_mp3d_70k/train" ###
 NUM_ENVIRONMENTS: 2
 #SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR", "SEMANTIC_SENSOR"]
 SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR"]
-CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_v7ir_7_1x1/manual0" ###
+CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_v7ir_7_1_1_mp3d_70k/train" ###
 NUM_UPDATES: 100000
 LOG_INTERVAL: 10
 NUM_CHECKPOINTS: 100
@@ -39,7 +40,8 @@ NUM_CHECKPOINTS: 100
 FORCE_TORCH_SINGLE_THREADED: True
 
 EVAL:
-  SPLIT: "train_1x1_manual0"
+  SPLIT: "val"
+  USE_CKPT_CONFIG: True
 
 RL:
   SUCCESS_REWARD: 2.5
@@ -76,10 +78,10 @@ RL:
     # The PyTorch distributed backend to use
     distrib_backend: NCCL
     # Visual encoder backbone
-    pretrained_weights: /home/fyh/Data/habitat_web_official_checkpoints/objectnav_semseg.ckpt # new!
+    pretrained_weights: /home/fyh/Data/habitat_web_official_checkpoints/objectnav_semseg.ckpt
     # Initialize with pretrained weights
-    pretrained: True # new!
-    # NEW: when using pretrained model, whether freeze the encoders
+    pretrained: True
+    # when using pretrained model, whether freeze the encoders
     freeze_encoders: True
     # Initialize just the visual encoder backbone with pretrained weights
     pretrained_encoder: False
@@ -95,7 +97,7 @@ RL:
 
 GAIL:
   use_double_buffer: True
-  gail_reward_coef: 1.0 # 0.5
+  gail_reward_coef: 0.01 # 0.5
   task_reward_coef: 1.0 # note [v5 param]
   sparse_reward_only: True # note [v5 param]
   is_demonstration_env: False
@@ -121,6 +123,10 @@ GAIL:
     eps: 1.0e-5
     use_linear_lr_decay: False
     max_grad_norm: 0.2
+
+    pretrained: True # new!
+    pretrained_weights: /home/fyh/Data/habitat/checkpoints/gail_v7i_7_mp3d_70k/tune_discriminator/ckpt.3.769024.pth # new!
+
 
 MODEL:
   ablate_depth: False

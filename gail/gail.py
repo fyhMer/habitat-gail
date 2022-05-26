@@ -32,6 +32,7 @@ class GAIL(nn.Module):
         max_grad_norm: Optional[float] = None,
         use_clipped_value_loss: bool = True,
         use_normalized_advantage: bool = True,
+        finetune: bool = False
     ) -> None:
 
         super().__init__()
@@ -48,11 +49,28 @@ class GAIL(nn.Module):
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
-        self.optimizer = optim.Adam(
-            list(filter(lambda p: p.requires_grad, actor_critic.parameters())),
-            lr=lr,
-            eps=eps,
-        )
+        if finetune:
+            self.optimizer = optim.Adam([
+                {
+                    'params': list(filter(lambda p: p.requires_grad, actor_critic.critic.parameters())),
+                    'lr': lr,
+                    'eps': eps
+                },
+                {
+                    'params': list(actor_critic.net.state_encoder.parameters()),
+                    'lr': 0.0,
+                },
+                {
+                    'params': list(actor_critic.action_distribution.parameters()),
+                    'lr': 0.0,
+                },
+            ])
+        else:
+            self.optimizer = optim.Adam(
+                list(filter(lambda p: p.requires_grad, actor_critic.parameters())),
+                lr=lr,
+                eps=eps,
+            )
         self.device = next(actor_critic.parameters()).device
         self.use_normalized_advantage = use_normalized_advantage
 

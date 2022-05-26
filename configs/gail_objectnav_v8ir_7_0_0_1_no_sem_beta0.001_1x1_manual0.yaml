@@ -10,10 +10,14 @@
 # v3-1-1-1-2: GAIL.DISCRIMINATOR.lr = 1.0e-6
 # v6: use habitat-web model (with rednet for semantic prediction)
 # v6ir, `ir` stands for imitation+reinforce:
-#     gail_reward_coef = 1.0
+#     gail_reward_coef = 1.0 for v7_*_0
 #     task_reward_coef = 1.0
 # PPO.lr = 1.0e-5 for v6ir-7 and v7ir-7
-# New: v7: use habitat-web pretrained weights
+# v8: this version is for single-episode ablation study
+#     NOT using habitat-web pretrained weights
+# v8_7_0_0_1: PPO.lr = 1.0e-4
+# no_sem: no semantic
+# beta0.001: PPO.entropy_coef = 0.001
 BASE_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_manual0.yaml" ###
 DEMO_TASK_CONFIG_PATH: "configs/objectnav_expert_mp3d_single_episode_manual0.yaml" ###
 CMD_TRAILING_OPTS: ["TASK_CONFIG.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT_STEPS", "50000"]
@@ -23,14 +27,14 @@ SIMULATOR_GPU_ID: 0
 TORCH_GPU_ID: 0
 #VIDEO_OPTION: ["disk", "tensorboard"]
 VIDEO_OPTION: ["disk"]
-TENSORBOARD_DIR: "/home/fyh/Data/habitat/tb/gail_v7ir_7_1x1/manual0" ###
-VIDEO_DIR: "/home/fyh/Data/video_dir/gail_v7ir_7_1x1/manual0" ###
+TENSORBOARD_DIR: "/data/fyh/Data/habitat/tb/gail_v8ir_7_0_0_1_no_sem_beta0.001_1x1/manual0" ###
+VIDEO_DIR: "/data/fyh/Data/video_dir/gail_v8ir_7_0_0_1_no_sem_beta0.001_1x1/manual0" ###
 TEST_EPISODE_COUNT: -1
-EVAL_CKPT_PATH_DIR: "/home/fyh/Data/habitat/checkpoints/gail_v7ir_7_1x1/manual0" ###
+EVAL_CKPT_PATH_DIR: "/data/fyh/Data/habitat/checkpoints/gail_v8ir_7_0_0_1_no_sem_beta0.001_1x1/manual0" ###
 NUM_ENVIRONMENTS: 2
 #SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR", "SEMANTIC_SENSOR"]
 SENSORS: ["DEPTH_SENSOR", "RGB_SENSOR"]
-CHECKPOINT_FOLDER: "/home/fyh/Data/habitat/checkpoints/gail_v7ir_7_1x1/manual0" ###
+CHECKPOINT_FOLDER: "/data/fyh/Data/habitat/checkpoints/gail_v8ir_7_0_0_1_no_sem_beta0.001_1x1/manual0" ###
 NUM_UPDATES: 100000
 LOG_INTERVAL: 10
 NUM_CHECKPOINTS: 100
@@ -56,8 +60,8 @@ RL:
     ppo_epoch: 4
     num_mini_batch: 1
     value_loss_coef: 0.5
-    entropy_coef: 0.01
-    lr: 1.0e-5
+    entropy_coef: 0.001
+    lr: 1.0e-4
     eps: 1.0e-5
     max_grad_norm: 0.2
     num_steps: 64
@@ -76,11 +80,11 @@ RL:
     # The PyTorch distributed backend to use
     distrib_backend: NCCL
     # Visual encoder backbone
-    pretrained_weights: /home/fyh/Data/habitat_web_official_checkpoints/objectnav_semseg.ckpt # new!
+    pretrained_weights: /home/fyh/Data/habitat_web_official_checkpoints/objectnav_semseg.ckpt # no use for pretrained = False
     # Initialize with pretrained weights
-    pretrained: True # new!
+    pretrained: False # note!
     # NEW: when using pretrained model, whether freeze the encoders
-    freeze_encoders: True
+    freeze_encoders: False # no use for pretrained = False
     # Initialize just the visual encoder backbone with pretrained weights
     pretrained_encoder: False
     # Whether or not the visual encoder backbone will be trained.
@@ -99,6 +103,7 @@ GAIL:
   task_reward_coef: 1.0 # note [v5 param]
   sparse_reward_only: True # note [v5 param]
   is_demonstration_env: False
+  tune_discriminator: False # note!!
 
   DISCRIMINATOR:
     OBS_TRANSFORMS:
@@ -135,8 +140,8 @@ MODEL:
   embed_goal_seg: False
   sem_seg_pred: True
   NO_VISION: False
-  USE_SEMANTICS: True
-  USE_PRED_SEMANTICS: True
+  USE_SEMANTICS: False # NEW !!
+  USE_PRED_SEMANTICS: False # NEW !!
   SWITCH_TO_PRED_SEMANTICS_UPDATE: 0
   SEMANTIC_ENCODER:
 #    rednet_ckpt: "data/rednet-models/rednet_semmap_mp3d_40_v2_vince.pth"

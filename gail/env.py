@@ -109,6 +109,7 @@ class NavGAILEnv(habitat.RLEnv):
         self._previous_measure = None
         self._previous_action = None
         print(">>>>>>>> init Env")
+        print("Total episodes in dataset:", len(dataset.episodes))
         super().__init__(self._core_env_config, dataset)
         print("<<<<<<< finish init Env")
 
@@ -177,7 +178,7 @@ class NavGAILEnv(habitat.RLEnv):
 
         current_measure = self._env.get_metrics()[self._reward_measure_name]
 
-        reward += self._previous_measure - current_measure
+        # reward += self._previous_measure - current_measure
         self._previous_measure = current_measure
 
         # if self._episode_success():

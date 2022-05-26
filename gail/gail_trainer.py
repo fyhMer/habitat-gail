@@ -161,6 +161,7 @@ class GAILTrainer(BaseRLTrainer):
         self.obs_space = observation_space
         self.actor_critic.to(self.device)
 
+        self.finetune = False
         if (
             self.config.RL.DDPPO.pretrained_encoder
             or self.config.RL.DDPPO.pretrained
@@ -168,45 +169,88 @@ class GAILTrainer(BaseRLTrainer):
             pretrained_state = torch.load(
                 self.config.RL.DDPPO.pretrained_weights, map_location="cpu"
             )
-            logger.info("Pretrained Weights Loaded")
+            logger.info(f"Pretrained Weights Loaded from {self.config.RL.DDPPO.pretrained_weights}")
 
-        if self.config.RL.DDPPO.pretrained:
-            # self.actor_critic.load_state_dict(
-            #     {   # type: ignore
-            #         k[len("actor_critic.") :]: v
-            #         for k, v in pretrained_state["state_dict"].items()
-            #     }
-            # )
-            missing_keys = self.actor_critic.load_state_dict(
-                {
-                    k.replace("model.", ""): v
-                    for k, v in pretrained_state["state_dict"].items()
-                }, strict=False
-            )
-            logger.info("Loading checkpoint missing keys: {}".format(missing_keys))
+            if self.config.RL.DDPPO.pretrained_encoder:
+                # only load encoders
+                logger.info("Load weights for encoders only!!!!!!!")
+                for encoder_name in ["rgb_encoder", "depth_encoder", "sem_seg_encoder"]:
+                    if encoder_name == "rgb_encoder":
+                        encoder = self.actor_critic.net.rgb_encoder
+                    elif encoder_name == "depth_encoder":
+                        encoder = self.actor_critic.net.depth_encoder
+                    elif encoder_name == "sem_seg_encoder":
+                        encoder = self.actor_critic.net.sem_seg_encoder
+                    else:
+                         raise ValueError
+                    missing_keys = encoder.load_state_dict(
+                        {
+                            k.replace(f"model.net.{encoder_name}.", ""): v
+                            for k, v in pretrained_state["state_dict"].items()
+                        }, strict=False
+                    )
+                    logger.info(f"{encoder_name} missing keys: {missing_keys}")
+                if self.config.RL.DDPPO.freeze_encoders:
+                    self.actor_critic.freeze_visual_encoders()
+                    logger.info("Using frozen pretraiend encoders")
 
-            if self.config.RL.DDPPO.freeze_encoders:
-                self.actor_critic.freeze_visual_encoders()
-                logger.info("Using frozen pretraiend encoders")
+            else:
+                if "agent_state_dict" in pretrained_state.keys():
+                    print("@@@@@@ agent_state_dict")
+                    state_dict = {
+                        k.replace("actor_critic.", ""): v
+                        for k, v in pretrained_state["agent_state_dict"].items()
+                    }
+                elif "state_dict" in pretrained_state.keys():
+                    print("@@@@@@ state_dict")
+                    state_dict = {
+                        k.replace("actor_critic.", ""): v
+                        for k, v in pretrained_state["state_dict"].items()
+                    }
+                else:
+                    assert 0
+                missing_keys = self.actor_critic.load_state_dict(
+                    {
+                        k.replace("model.", ""): v
+                        for k, v in state_dict.items()
+                    }, strict=False
+                )
+                logger.info("Loading checkpoint missing keys: {}".format(missing_keys))
 
-        # elif self.config.RL.DDPPO.pretrained_encoder:
-        #     prefix = "actor_critic.net.visual_encoder."
-        #     self.actor_critic.net.visual_encoder.load_state_dict(
-        #         {
-        #             k[len(prefix):]: v
-        #             for k, v in pretrained_state["state_dict"].items()
-        #             if k.startswith(prefix)
-        #         }
-        #     )
+                if self.config.RL.DDPPO.freeze_encoders:
+                    self.actor_critic.freeze_visual_encoders()
+                    logger.info("Using frozen pretraiend encoders")
 
-        if not self.config.RL.DDPPO.train_encoder:
-            self._static_encoder = True
-            for param in self.actor_critic.net.visual_encoder.parameters():
-                param.requires_grad_(False)
+                if hasattr(self.config.RL, "Finetune"):
+                    logger.info("Start Freeze encoder")
+                    self.finetune = True
+                    self.actor_finetuning_update = self.config.RL.Finetune.start_actor_finetuning_at
+                    self.actor_lr_warmup_update = self.config.RL.Finetune.actor_lr_warmup_update
+                    self.critic_lr_decay_update = self.config.RL.Finetune.critic_lr_decay_update
+                    self.start_critic_warmup_at = self.config.RL.Finetune.start_critic_warmup_at
+
+        # if not self.config.RL.DDPPO.train_encoder:
+        #     self._static_encoder = True
+        #     for param in self.actor_critic.net.visual_encoder.parameters():
+        #         param.requires_grad_(False)
 
         if self.config.RL.DDPPO.reset_critic:
             nn.init.orthogonal_(self.actor_critic.critic.fc.weight)
             nn.init.constant_(self.actor_critic.critic.fc.bias, 0)
+        elif self.config.RL.DDPPO.use_pretrained_critic_weights:
+            ckpt = torch.load(
+                self.config.RL.DDPPO.pretrained_critic_weights, map_location="cpu"
+            )
+            logger.info("Pretrained weights loaded for critic")
+            missing_keys = self.actor_critic.critic.load_state_dict(
+                {
+                    k.replace("actor_critic.critic.", ""): v
+                    for k, v in ckpt["agent_state_dict"].items()
+                    if k.startswith("actor_critic.critic")
+                }, strict=False
+            )
+            logger.info("missing keys: {}".format(missing_keys))
+            del ckpt
 
         self.agent = GAIL(
             actor_critic=self.actor_critic,
@@ -219,6 +263,7 @@ class GAILTrainer(BaseRLTrainer):
             eps=ppo_cfg.eps,
             max_grad_norm=ppo_cfg.max_grad_norm,
             use_normalized_advantage=ppo_cfg.use_normalized_advantage,
+            finetune=self.finetune
         )
 
     def _setup_discriminator(self):
@@ -255,6 +300,20 @@ class GAILTrainer(BaseRLTrainer):
             rnn_type=self.config.GAIL.DISCRIMINATOR.rnn_type,
             obs_transforms=discrim_obs_transforms
         )
+
+        # Load pretrained discriminator weights
+        if hasattr(self.config.GAIL.DISCRIMINATOR, "pretrained") and self.config.GAIL.DISCRIMINATOR.pretrained:
+            ckpt = torch.load(self.config.GAIL.DISCRIMINATOR.pretrained_weights, map_location="cpu")
+            logger.info(f"Discriminator pretrained weights loaded from {self.config.GAIL.DISCRIMINATOR.pretrained_weights}")
+            missing_keys = self.discriminator_net.load_state_dict(
+                {
+                    k.replace("net.", ""): v
+                    for k, v in ckpt["discrim_state_dict"].items()
+                }, strict=False
+            )
+            logger.info("Loading checkpoint missing keys: {}".format(missing_keys))
+            del ckpt
+
         self.discriminator_net.to(self.device)
         self.discriminator = Discriminator(
             net=self.discriminator_net,
@@ -286,6 +345,9 @@ class GAILTrainer(BaseRLTrainer):
         resume_state = load_resume_state(self.config)
         if resume_state is not None:
             self.config: Config = resume_state["config"]
+            self.config.defrost()
+            self.config.GAIL.is_demonstration_env = False
+            self.config.freeze()
             self.using_velocity_ctrl = (
                 self.config.TASK_CONFIG.TASK.POSSIBLE_ACTIONS
             ) == ["VELOCITY_CONTROL"]
@@ -818,11 +880,15 @@ class GAILTrainer(BaseRLTrainer):
             next_value, ppo_cfg.use_gae, ppo_cfg.gamma, ppo_cfg.tau
         )
 
-        self.agent.train()
+        if not (hasattr(self.config.GAIL,
+                        "tune_discriminator") and self.config.GAIL.tune_discriminator):
+            self.agent.train()
 
-        value_loss, action_loss, dist_entropy = self.agent.update(
-            self.rollouts
-        )
+            value_loss, action_loss, dist_entropy = self.agent.update(
+                self.rollouts
+            )
+        else:
+            value_loss, action_loss, dist_entropy = 0., 0., 0.
 
         self.rollouts.after_update()
         self.pth_time += time.time() - t_update_model
@@ -991,10 +1057,42 @@ class GAILTrainer(BaseRLTrainer):
         count_checkpoints = 0
         prev_time = 0
 
-        agent_lr_scheduler = LambdaLR(
-            optimizer=self.agent.optimizer,
-            lr_lambda=lambda x: 1 - self.percent_done(),
-        )
+        if not self.finetune:
+            agent_lr_scheduler = LambdaLR(
+                optimizer=self.agent.optimizer,
+                lr_lambda=lambda x: 1 - self.percent_done(),
+            )
+        else:
+            agent_lr_scheduler = LambdaLR(
+                optimizer=self.agent.optimizer,
+                lr_lambda=[
+                    # actor_critic.critic
+                    lambda x: self.critic_linear_decay(
+                        epoch=x,
+                        start_update=self.start_critic_warmup_at,
+                        max_updates=self.critic_lr_decay_update,
+                        start_lr=self.config.RL.PPO.lr,
+                        end_lr=self.config.RL.Finetune.policy_ft_lr
+                    ),
+                    # actor_critic.net.state_encoder
+                    lambda x: self.linear_warmup(
+                        epoch=x,
+                        start_update=self.actor_finetuning_update,
+                        max_updates=self.actor_lr_warmup_update,
+                        start_lr=0.0,
+                        end_lr=self.config.RL.Finetune.policy_ft_lr
+                    ),
+                    # actor_critic.action_distribution
+                    lambda x: self.linear_warmup(
+                        epoch=x,
+                        start_update=self.actor_finetuning_update,
+                        max_updates=self.actor_lr_warmup_update,
+                        start_lr=0.0,
+                        end_lr=self.config.RL.Finetune.policy_ft_lr
+                    ),
+                ]
+            )
+
         discrim_lr_scheduler = LambdaLR(
             optimizer=self.discriminator.optimizer,
             lr_lambda=lambda x: 1 - self.percent_done(),
@@ -1079,6 +1177,43 @@ class GAILTrainer(BaseRLTrainer):
                     requeue_job()
 
                     return
+
+                if self.num_updates_done % 10 == 0:
+                    logger.info(
+                        "update: {}\tLR: {}\tPG_LR: {}".format(
+                            self.num_updates_done,
+                            agent_lr_scheduler.get_lr(),
+                            [param_group["lr"] for param_group in
+                             self.agent.optimizer.param_groups],
+                        )
+                    )
+
+                if self.finetune:
+                    # for param in self.actor_critic.action_distribution.parameters():
+                        # print(param.requires_grad)
+                    # Enable actor finetuning at update actor_finetuning_update
+                    if self.num_updates_done == self.actor_finetuning_update:
+                        for param in self.actor_critic.action_distribution.parameters():
+                            param.requires_grad_(True)
+                        for param in self.actor_critic.net.state_encoder.parameters():
+                            param.requires_grad_(True)
+                        for i, param_group in enumerate(self.agent.optimizer.param_groups):
+                            param_group["eps"] = self.config.RL.PPO.eps
+                            agent_lr_scheduler.base_lrs[i] = 1.0
+                        logger.info("Start actor finetuning at: {}".format(self.num_updates_done))
+
+                        logger.info(
+                            "updated agent number of parameters: {}".format(
+                                sum(param.numel() if param.requires_grad else 0 for param in self.agent.parameters())
+                            )
+                        )
+                    if self.num_updates_done == self.start_critic_warmup_at:
+                        self.agent.optimizer.param_groups[0]["eps"] = self.config.RL.PPO.eps
+                        agent_lr_scheduler.base_lrs[0] = 1.0
+                        logger.info("Set critic LR at: {}".format(self.num_updates_done))
+
+                    # if self.num_updates_done > self.actor_finetuning_update:
+                    agent_lr_scheduler.step()
 
                 self.agent.eval()
                 count_steps_delta = 0
@@ -1188,13 +1323,14 @@ class GAILTrainer(BaseRLTrainer):
 
         config.defrost()
         config.GAIL.is_demonstration_env = False
-        config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
-        config.NUM_ENVIRONMENTS = 1
+        # config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
+        # config.TASK_CONFIG.DATASET.SPLIT = "val_mini"
+        # config.NUM_ENVIRONMENTS = 2
         config.freeze()
 
-        self.config.defrost()
-        self.config.NUM_ENVIRONMENTS = 1
-        self.config.freeze()
+        # self.config.defrost()
+        # self.config.NUM_ENVIRONMENTS = 2
+        # self.config.freeze()
 
         ppo_cfg = config.RL.PPO
 
@@ -1204,8 +1340,8 @@ class GAILTrainer(BaseRLTrainer):
             config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
             config.freeze()
 
-        if config.VERBOSE:
-            logger.info(f"env config: {config}")
+        # if config.VERBOSE:
+        logger.info(f"env config: {config}")
 
         self._init_eval_envs(config)
 
@@ -1220,11 +1356,23 @@ class GAILTrainer(BaseRLTrainer):
             action_shape = (1,)
             action_type = torch.long
 
+        # Load RedNet for semantics prediction
+        if self.config.MODEL.USE_PRED_SEMANTICS:
+            from gail.models.rednet import load_rednet
+            self.semantic_predictor = load_rednet(
+                self.device,
+                ckpt=self.config.MODEL.SEMANTIC_ENCODER.rednet_ckpt,
+                resize=True, # since we train on half-vision
+                num_classes=self.config.MODEL.SEMANTIC_ENCODER.num_classes
+            )
+            self.semantic_predictor.eval()
+
         self._setup_actor_critic_agent(ppo_cfg)
 
         self.agent.load_state_dict(ckpt_dict["agent_state_dict"])
         self.actor_critic = self.agent.actor_critic
 
+        print("number of episodes in envs:", self.envs.number_of_episodes)
         observations = self.envs.reset()
         batch = batch_obs(
             observations, device=self.device, cache=self._obs_batching_cache
@@ -1239,7 +1387,7 @@ class GAILTrainer(BaseRLTrainer):
         test_recurrent_hidden_states = torch.zeros(
             self.config.NUM_ENVIRONMENTS,
             self.actor_critic.net.num_recurrent_layers,
-            ppo_cfg.hidden_size,
+            self.config.MODEL.STATE_ENCODER.hidden_size, #ppo_cfg.hidden_size,
             device=self.device,
         )
         prev_actions = torch.zeros(
@@ -1284,6 +1432,12 @@ class GAILTrainer(BaseRLTrainer):
             and self.envs.num_envs > 0
         ):
             current_episodes = self.envs.current_episodes()
+
+            if self.semantic_predictor is not None:
+                batch["semantic"] = self.semantic_predictor(batch["rgb"],
+                                                            batch["depth"])
+                if self.config.MODEL.SEMANTIC_ENCODER.is_thda:
+                    batch["semantic"] = batch["semantic"] - 1
 
             with torch.no_grad():
                 (
@@ -1428,3 +1582,55 @@ class GAILTrainer(BaseRLTrainer):
             writer.add_scalar(f"eval_metrics/{k}", v, step_id)
 
         self.envs.close()
+
+    @staticmethod
+    def linear_warmup(epoch: int, start_update: int, max_updates: int,
+                      start_lr: int, end_lr: int) -> float:
+        r"""Returns a multiplicative factor for linear value decay
+
+        Args:
+            epoch: current epoch number
+            total_num_updates: total number of
+
+        Returns:
+            multiplicative factor that decreases param value linearly
+        """
+        if epoch < start_update:
+            return 1.0
+
+        if epoch > max_updates:
+            return end_lr
+
+        pct_step = (epoch - start_update) / (max_updates - start_update)
+        step_lr = (end_lr - start_lr) * pct_step + start_lr
+        if step_lr > end_lr:
+            step_lr = end_lr
+        # logger.info("{}, {}, {}, {}, {}, {}".format(epoch, start_update, max_updates, start_lr, end_lr, step_lr))
+        return step_lr
+
+    @staticmethod
+    def critic_linear_decay(epoch: int, start_update: int, max_updates: int,
+                            start_lr: int, end_lr: int) -> float:
+        r"""Returns a multiplicative factor for linear value decay
+
+        Args:
+            epoch: current epoch number
+            total_num_updates: total number of
+
+        Returns:
+            multiplicative factor that decreases param value linearly
+        """
+        if epoch <= start_update:
+            return 1
+
+        if epoch > max_updates:
+            return end_lr
+
+        pct_step = (epoch - start_update) / (max_updates - start_update)
+        step_lr = start_lr - (start_lr - end_lr) * pct_step
+        if step_lr < end_lr:
+            step_lr = end_lr
+        # logger.info(
+        #     "{}, {}, {}, {}, {}, {}".format(epoch, start_update, max_updates,
+        #                                     start_lr, end_lr, step_lr))
+        return step_lr
